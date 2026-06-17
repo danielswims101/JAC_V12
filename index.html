@@ -1177,9 +1177,53 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
 <footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro — Free Forever. No Ads.</p><p>Powered by Claude AI · Streaming · Built for serious swimmers</p></div></footer>
 </div>
 
-<!-- ACCESS GATE -->
+<!-- ACCESS GATE — JS defined before markup so buttons work immediately -->
+<script>
+var VALID_CODES_GATE = ['Daniel!2026MasterKey','DanielMac'];
+var ANTHROPIC_API_KEY = '';
+
+function checkCode() {
+  var v = document.getElementById('code-input').value.trim();
+  var valid = VALID_CODES_GATE.indexOf(v) !== -1;
+  if (valid) {
+    sessionStorage.setItem('swimiq_code_ok','1');
+    document.getElementById('screen-code').style.cssText = 'display:none!important';
+    document.getElementById('screen-apikey').style.cssText = 'display:block!important;background:var(--card);border:1px solid var(--border);border-radius:var(--r16);padding:3rem 2.5rem;width:100%;text-align:center;box-shadow:0 0 80px rgba(0,212,255,0.1)';
+    setTimeout(function(){ var i=document.getElementById('apikey-input'); if(i)i.focus(); }, 100);
+  } else {
+    var inp = document.getElementById('code-input');
+    var err = document.getElementById('code-error');
+    inp.style.borderColor = 'var(--red)';
+    if(err) err.style.display = 'block';
+    inp.value = '';
+    setTimeout(function(){ inp.style.borderColor='var(--border)'; if(err)err.style.display='none'; }, 3000);
+  }
+}
+function checkApiKey() {
+  var v = document.getElementById('apikey-input').value.trim();
+  if (v.indexOf('sk-ant-') === 0) {
+    ANTHROPIC_API_KEY = v;
+    sessionStorage.setItem('swimiq_apikey', v);
+    closeGate();
+  } else {
+    var inp = document.getElementById('apikey-input');
+    var err = document.getElementById('apikey-error');
+    inp.style.borderColor = 'var(--red)';
+    if(err) err.style.display = 'block';
+    setTimeout(function(){ inp.style.borderColor='var(--border)'; if(err)err.style.display='none'; }, 3000);
+  }
+}
+function skipApiKey() { sessionStorage.setItem('swimiq_apikey','skipped'); closeGate(); }
+function closeGate() {
+  var g = document.getElementById('access-gate');
+  g.style.opacity = '0';
+  g.style.transition = 'opacity 0.4s ease';
+  setTimeout(function(){ g.style.display='none'; }, 450);
+}
+</script>
+
 <div id="access-gate" style="position:fixed;inset:0;background:var(--navy);z-index:9998;display:flex;align-items:center;justify-content:center;padding:2rem">
-  <div id="gate-inner" style="position:relative;max-width:480px;width:100%;">
+  <div style="max-width:480px;width:100%;">
   <div id="screen-code" style="background:var(--card);border:1px solid var(--border);border-radius:var(--r16);padding:3rem 2.5rem;width:100%;text-align:center;box-shadow:0 0 80px rgba(0,212,255,0.1)">
     <div style="font-size:3rem;margin-bottom:1.25rem">&#128272;</div>
     <div style="font-family:var(--fm);font-size:0.65rem;letter-spacing:4px;color:var(--cyan);text-transform:uppercase;margin-bottom:0.75rem">SwimIQ Pro — Access Required</div>
@@ -1209,64 +1253,17 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
 </div>
 
 <script>
-// ─── ACCESS CODE SYSTEM ───────────────────────
-const VALID_CODES = new Set(['Daniel!2026MasterKey','DanielMac']);
-let ANTHROPIC_API_KEY = '';
-
-function checkCode() {
-  const v = document.getElementById('code-input').value.trim();
-  if (VALID_CODES.has(v)) {
-    sessionStorage.setItem('swimiq_code_ok','1');
-    const sc = document.getElementById('screen-code');
-    const sa = document.getElementById('screen-apikey');
-    sc.style.display = 'none';
-    sc.style.visibility = 'hidden';
-    sa.style.display = 'block';
-    sa.style.visibility = 'visible';
-    setTimeout(() => {
-      const inp = document.getElementById('apikey-input');
-      if (inp) inp.focus();
-    }, 80);
-  } else {
-    const inp = document.getElementById('code-input');
-    const err = document.getElementById('code-error');
-    inp.style.borderColor = 'var(--red)';
-    if (err) err.style.display = 'block';
-    inp.value = '';
-    setTimeout(() => {
-      inp.style.borderColor = 'var(--border)';
-      if (err) err.style.display = 'none';
-    }, 3000);
-  }
-}
-function checkApiKey() {
-  const v = document.getElementById('apikey-input').value.trim();
-  if (v.startsWith('sk-ant-')) {
-    ANTHROPIC_API_KEY=v; sessionStorage.setItem('swimiq_apikey',v); closeGate();
-  } else {
-    const inp=document.getElementById('apikey-input');
-    inp.style.borderColor='var(--red)'; document.getElementById('apikey-error').style.display='block';
-    setTimeout(()=>{inp.style.borderColor='var(--border)'; document.getElementById('apikey-error').style.display='none';},3000);
-  }
-}
-function skipApiKey(){sessionStorage.setItem('swimiq_apikey','skipped'); closeGate();}
-function closeGate(){
-  const g=document.getElementById('access-gate');
-  g.style.opacity='0'; g.style.transition='opacity 0.5s ease';
-  setTimeout(()=>g.style.display='none',500);
-}
+// ─── SESSION RESTORE (gate JS is defined above the gate HTML) ─────────────
 (function(){
-  const codeOk = sessionStorage.getItem('swimiq_code_ok') === '1';
-  const storedKey = sessionStorage.getItem('swimiq_apikey') || '';
-  const keyDone = storedKey.startsWith('sk-ant-') || storedKey === 'skipped';
+  var codeOk = sessionStorage.getItem('swimiq_code_ok') === '1';
+  var storedKey = sessionStorage.getItem('swimiq_apikey') || '';
+  var keyDone = storedKey.indexOf('sk-ant-') === 0 || storedKey === 'skipped';
   if (codeOk && keyDone) {
-    if (storedKey.startsWith('sk-ant-')) ANTHROPIC_API_KEY = storedKey;
+    if (storedKey.indexOf('sk-ant-') === 0) ANTHROPIC_API_KEY = storedKey;
     document.getElementById('access-gate').style.display = 'none';
   } else if (codeOk) {
-    const sc = document.getElementById('screen-code');
-    const sa = document.getElementById('screen-apikey');
-    sc.style.display = 'none'; sc.style.visibility = 'hidden';
-    sa.style.display = 'block'; sa.style.visibility = 'visible';
+    document.getElementById('screen-code').style.display = 'none';
+    document.getElementById('screen-apikey').style.display = 'block';
   }
 })();
 
