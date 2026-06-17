@@ -1312,18 +1312,6 @@ document.addEventListener('DOMContentLoaded',initReveal);
 
 // ─── REALISTIC 3D VISUALIZER ──────────────────
 // Articulated skeleton swimmer with:
-// - 12 anatomical joints (shoulder, elbow, wrist, hip, knee, ankle × 2)
-// - Realistic limb proportions scaled to a 1.85m swimmer
-// - Physics-accurate force magnitudes from published hydrodynamics literature
-// - Water particle effects
-// - Muscle activation glow on active segments
-
-let vizPlaying=true, vizSpeed=1, vizStroke='freestyle', vizPhase=0;
-let vizShowForces=true, vizShowSkeleton=true, vizShowMuscles=true;
-let vizAnimId=null;
-const vizCanvas = document.getElementById('viz3d');
-const vizCtx = vizCanvas ? vizCanvas.getContext('2d') : null;
-
 // ─── REALISTIC SWIMMER VISUALIZER ─────────────────────────────────────────
 // Draws a swimmer as a smooth bezier-curve silhouette — filled body shape with
 // gradient muscle shading, not sticks. The swimmer is viewed from the side,
