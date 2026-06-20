@@ -6,6 +6,118 @@
 <title>SwimIQ Pro — Elite Swimming Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Minimal OrbitControls implementation compatible with THREE r128 (UMD global build).
+// Supports: left-drag orbit, scroll-wheel zoom, damping. No pan (not needed here).
+THREE.OrbitControls = function (camera, domElement) {
+  this.camera = camera;
+  this.domElement = domElement;
+  this.target = new THREE.Vector3();
+  this.enabled = true;
+  this.enableDamping = false;
+  this.dampingFactor = 0.1;
+  this.minDistance = 0.1;
+  this.maxDistance = Infinity;
+  this.minPolarAngle = 0;
+  this.maxPolarAngle = Math.PI;
+  this.rotateSpeed = 1.0;
+  this.zoomSpeed = 1.0;
+
+  var self = this;
+  var spherical = new THREE.Spherical();
+  var sphericalDelta = new THREE.Spherical(0, 0, 0);
+  var scale = 1;
+  var rotating = false;
+  var lastX = 0, lastY = 0;
+
+  function updateSpherical() {
+    var offset = new THREE.Vector3().copy(self.camera.position).sub(self.target);
+    spherical.setFromVector3(offset);
+  }
+  updateSpherical();
+
+  function onPointerDown(e) {
+    if (!self.enabled) return;
+    rotating = true;
+    lastX = e.clientX; lastY = e.clientY;
+  }
+  function onPointerMove(e) {
+    if (!self.enabled || !rotating) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    var el = self.domElement;
+    sphericalDelta.theta -= 2 * Math.PI * dx / el.clientHeight * self.rotateSpeed;
+    sphericalDelta.phi   -= 2 * Math.PI * dy / el.clientHeight * self.rotateSpeed;
+  }
+  function onPointerUp() { rotating = false; }
+  function onWheel(e) {
+    if (!self.enabled) return;
+    e.preventDefault();
+    if (e.deltaY < 0) scale *= Math.pow(0.95, self.zoomSpeed);
+    else scale /= Math.pow(0.95, self.zoomSpeed);
+  }
+  function onTouchStart(e) {
+    if (e.touches.length === 1) {
+      rotating = true;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    }
+  }
+  function onTouchMove(e) {
+    if (!self.enabled || !rotating || e.touches.length !== 1) return;
+    e.preventDefault();
+    var dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    var el = self.domElement;
+    sphericalDelta.theta -= 2 * Math.PI * dx / el.clientHeight * self.rotateSpeed;
+    sphericalDelta.phi   -= 2 * Math.PI * dy / el.clientHeight * self.rotateSpeed;
+  }
+  function onTouchEnd() { rotating = false; }
+
+  this.domElement.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+  this.domElement.addEventListener('wheel', onWheel, { passive: false });
+  this.domElement.addEventListener('touchstart', onTouchStart, { passive: true });
+  this.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+  this.domElement.addEventListener('touchend', onTouchEnd);
+
+  this.update = function () {
+    updateSpherical();
+    spherical.theta += sphericalDelta.theta;
+    spherical.phi += sphericalDelta.phi;
+    spherical.phi = Math.max(self.minPolarAngle, Math.min(self.maxPolarAngle, spherical.phi));
+    spherical.makeSafe();
+    spherical.radius *= scale;
+    spherical.radius = Math.max(self.minDistance, Math.min(self.maxDistance, spherical.radius));
+
+    var offset = new THREE.Vector3().setFromSpherical(spherical);
+    self.camera.position.copy(self.target).add(offset);
+    self.camera.lookAt(self.target);
+
+    if (self.enableDamping) {
+      sphericalDelta.theta *= (1 - self.dampingFactor);
+      sphericalDelta.phi *= (1 - self.dampingFactor);
+      scale = 1 + (scale - 1) * (1 - self.dampingFactor);
+    } else {
+      sphericalDelta.set(0, 0, 0);
+      scale = 1;
+    }
+    return true;
+  };
+
+  this.dispose = function () {
+    self.domElement.removeEventListener('mousedown', onPointerDown);
+    window.removeEventListener('mousemove', onPointerMove);
+    window.removeEventListener('mouseup', onPointerUp);
+    self.domElement.removeEventListener('wheel', onWheel);
+    self.domElement.removeEventListener('touchstart', onTouchStart);
+    self.domElement.removeEventListener('touchmove', onTouchMove);
+    self.domElement.removeEventListener('touchend', onTouchEnd);
+  };
+};
+
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -312,6 +424,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
       <li><a onclick="showPage('taper')" id="nav-taper">Taper</a></li>
       <li><a onclick="showPage('mental')" id="nav-mental">Mental</a></li>
       <li><a onclick="showPage('injury')" id="nav-injury">Injury</a></li>
+      <li><a onclick="showPage('season')" id="nav-season">Season</a></li>
     </ul>
   </div>
   <div class="nav-right">
@@ -391,58 +504,60 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <div class="footer-col"><h4>Train</h4><ul><li onclick="showPage('workouts')">Workout Generator</li><li onclick="showPage('dryland')">Dryland</li><li onclick="showPage('log')">Training Log</li><li onclick="showPage('profile')">My PRs</li></ul></div>
     <div class="footer-col"><h4>Compete</h4><ul><li onclick="showPage('race')">Race Strategy</li><li onclick="showPage('taper')">Taper Protocol</li><li onclick="showPage('mental')">Mental Performance</li><li onclick="showPage('nutrition')">Nutrition</li></ul></div>
   </div>
-  <div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro — Free Forever. No Ads.</p><p>Powered by Claude AI · Built for serious swimmers</p></div>
+  <div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro — Free Forever. No Ads.</p><p>Powered by Claude AI · Built for serious swimmers</p></div>
 </footer>
 </div>
 
 <!-- 3D VISUALIZER PAGE - FULLY REBUILT -->
 <div class="page" id="page-visualizer">
 <div class="section-wrap narrow">
-  <div class="section-eyebrow">Articulated 3D Biomechanics Engine</div>
-  <div class="section-title">3D FORCE <span>VISUALIZER</span></div>
-  <p class="section-intro">A fully articulated swimmer skeleton with anatomically correct joint positions, muscle lines, and physics-accurate force vectors that pulse with the stroke cycle.</p>
-  <div class="viz-canvas-wrap">
-    <canvas id="viz3d"></canvas>
-    <!-- Overlay stats -->
+  <div class="section-eyebrow">Real 3D Biomechanics Engine</div>
+  <div class="section-title">3D STROKE <span>VISUALIZER</span></div>
+  <p class="section-intro">A fully modeled 3D swimmer with smooth-shaded anatomy, motion timed to elite stroke-phase research. Drag to orbit, scroll to zoom, or jump to a preset angle — see every technique from any side.</p>
+  <div class="viz-canvas-wrap" style="position:relative">
+    <div id="viz3d-container" style="width:100%;height:520px;border-radius:var(--r16);overflow:hidden;cursor:grab"></div>
     <div class="viz-overlay-stats">
       <div class="vos-item"><span class="vos-val" id="stat-drag">—</span><span class="vos-lbl">Drag (N)</span></div>
       <div class="vos-item"><span class="vos-val" id="stat-thrust">—</span><span class="vos-lbl">Thrust (N)</span></div>
       <div class="vos-item"><span class="vos-val" id="stat-velocity">—</span><span class="vos-lbl">m/s</span></div>
       <div class="vos-item"><span class="vos-val" id="stat-efficiency">—</span><span class="vos-lbl">Effic.</span></div>
     </div>
-    <!-- Phase bar at bottom -->
     <div class="viz-phase-bar" id="viz-phase-bar"></div>
   </div>
   <div class="viz-controls" style="margin-top:1rem">
-    <button class="viz-btn active" onclick="setStroke('freestyle',this)">🏊 Freestyle</button>
-    <button class="viz-btn" onclick="setStroke('backstroke',this)">🔄 Backstroke</button>
-    <button class="viz-btn" onclick="setStroke('breaststroke',this)">🐸 Breaststroke</button>
-    <button class="viz-btn" onclick="setStroke('butterfly',this)">🦋 Butterfly</button>
-    <button class="viz-btn" onclick="setStroke('dolphin',this)">🌊 Dolphin Kick</button>
+    <button class="viz-btn active" onclick="setStroke3D('freestyle',this)">🏊 Freestyle</button>
+    <button class="viz-btn" onclick="setStroke3D('backstroke',this)">🔄 Backstroke</button>
+    <button class="viz-btn" onclick="setStroke3D('breaststroke',this)">🐸 Breaststroke</button>
+    <button class="viz-btn" onclick="setStroke3D('butterfly',this)">🦋 Butterfly</button>
+    <button class="viz-btn" onclick="setStroke3D('dolphin',this)">🌊 Dolphin Kick</button>
   </div>
   <div class="viz-controls" style="margin-top:8px">
-    <button class="viz-btn active" id="vbtn-play" onclick="togglePlay()">⏸ Pause</button>
-    <button class="viz-btn" onclick="setSpeed(0.4)">0.4× Slow</button>
-    <button class="viz-btn active" onclick="setSpeed(1)">1× Normal</button>
-    <button class="viz-btn" onclick="setSpeed(2)">2× Fast</button>
-    <button class="viz-btn" onclick="toggleForces()">Toggle Forces</button>
-    <button class="viz-btn" onclick="toggleSkeleton()">Toggle Skeleton</button>
-    <button class="viz-btn" onclick="toggleMuscles()">Toggle Muscles</button>
+    <span style="font-family:var(--fm);font-size:0.6rem;letter-spacing:2px;color:var(--white3);text-transform:uppercase;align-self:center;margin-right:4px">View:</span>
+    <button class="viz-btn" onclick="setView3D('side')">Side</button>
+    <button class="viz-btn" onclick="setView3D('front')">Front</button>
+    <button class="viz-btn" onclick="setView3D('top')">Top</button>
+    <button class="viz-btn" onclick="setView3D('three-quarter')">3/4 View</button>
   </div>
+  <div class="viz-controls" style="margin-top:8px">
+    <button class="viz-btn active" id="vbtn-play" onclick="togglePlay3D()">⏸ Pause</button>
+    <button class="viz-btn" onclick="setSpeed3D(0.3)">0.3× Slow</button>
+    <button class="viz-btn active" onclick="setSpeed3D(1)">1× Normal</button>
+    <button class="viz-btn" onclick="setSpeed3D(2)">2× Fast</button>
+    <button class="viz-btn" onclick="toggleForces3D()">Toggle Forces</button>
+  </div>
+  <p style="font-size:0.74rem;color:var(--white4);margin-top:0.6rem;font-family:var(--fm);letter-spacing:0.3px">🖱 Drag to orbit · Scroll to zoom · Tap a phase below to jump to it</p>
   <div class="force-legend">
     <div class="legend-item"><div class="legend-dot" style="background:#ff4444"></div>Drag</div>
     <div class="legend-item"><div class="legend-dot" style="background:#00ff88"></div>Thrust / Propulsion</div>
     <div class="legend-item"><div class="legend-dot" style="background:#4488ff"></div>Lift</div>
     <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div>Net Force</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#aa44ff"></div>Water Pressure</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ff6688"></div>Active Muscles</div>
   </div>
   <div id="viz-info-panel" style="margin-top:1.5rem;background:var(--card);border:1px solid var(--border);border-radius:var(--r12);padding:1.5rem">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
       <div id="viz-phase-name" style="font-family:var(--fh);font-size:1.4rem;letter-spacing:1px;color:var(--cyan)">Select a stroke</div>
       <div id="viz-stroke-name" style="font-family:var(--fm);font-size:0.65rem;letter-spacing:3px;color:var(--white3);text-transform:uppercase"></div>
     </div>
-    <div id="viz-phase-text" style="font-size:0.9rem;color:var(--white2);line-height:1.8;font-weight:300">The visualizer shows an articulated swimmer skeleton with joint positions derived from motion-capture data of elite swimmers. Force vectors update in real time as the stroke cycle progresses — red for drag, green for thrust, blue for lift, gold for net force.</div>
+    <div id="viz-phase-text" style="font-size:0.9rem;color:var(--white2);line-height:1.8;font-weight:300">The visualizer renders a real 3D swimmer with joint motion timed to elite stroke-phase research. Orbit freely or use the view buttons to inspect technique from any angle.</div>
     <div id="viz-physics-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem;margin-top:1rem"></div>
   </div>
 
@@ -495,7 +610,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro — Free Forever</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro — Free Forever</p></div></footer>
 </div>
 
 <!-- TECHNIQUE PAGE (unchanged content) -->
@@ -594,7 +709,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </div></div></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- VIDEOS PAGE -->
@@ -636,7 +751,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <div class="video-card"><div class="video-embed"><iframe src="https://www.youtube.com/embed/B_h8lKAu7cA" loading="lazy" allowfullscreen></iframe></div><div class="video-info"><span class="video-tag">Race · Analysis</span><h4>ELITE RACE BREAKDOWN</h4><p>Split analysis, pacing strategy, turn mechanics.</p></div></div>
   </div></div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- SETS PAGE -->
@@ -697,7 +812,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </tbody></table></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- DRYLAND PAGE -->
@@ -719,7 +834,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
       <li><span class="reps">5 min</span>Ankle plantarflexion loading</li><li><span class="reps">2 min</span>Thoracic rotation</li><li><span class="reps">3 min</span>Shoulder CARs</li><li><span class="reps">2 min</span>Hip 90/90 switches</li></ul></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- WORKOUT GENERATOR PAGE -->
@@ -756,7 +871,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- CALCULATOR PAGE -->
@@ -820,7 +935,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- ZONES PAGE -->
@@ -843,7 +958,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <div class="card"><div class="badge red">Zone 4–5</div><h3>VO₂ MAX & SPRINT</h3><p><strong>Zone 4:</strong> 5.0–8.0 mmol/L · 3–8 min intervals · 48–72 hr recovery. <strong>Zone 5:</strong> 8.0+ mmol/L · 10–30 sec reps · full rest only.</p></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- MY PRs PAGE -->
@@ -869,7 +984,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <button class="btn-sm" onclick="showPage('calculator')">Calculate Pace Zones →</button>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- TRAINING LOG PAGE -->
@@ -908,7 +1023,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <!-- NUTRITION, RACE, TAPER, MENTAL, INJURY (condensed) -->
@@ -948,7 +1063,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <div class="content-block"><h4>DAILY HYDRATION</h4><ul><li>Baseline: 35–45ml per kg bodyweight</li><li>Add 400–600ml per hour of training</li><li>Urine target: pale yellow</li><li>Electrolytes mandatory on 90+ min sessions</li></ul></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <div class="page" id="page-race">
@@ -999,7 +1114,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <div class="content-block"><h4>PACING SCIENCE</h4><p>100m target: front half no more than 2% faster than back half. 200m target: back half 1–3% faster than front. 400m+: descending 100m splits throughout.</p></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <div class="page" id="page-taper">
@@ -1042,7 +1157,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </ul></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <div class="page" id="page-mental">
@@ -1088,7 +1203,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </ul></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
 
 <div class="page" id="page-injury">
@@ -1099,6 +1214,10 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     <button class="tab-btn active" onclick="switchTab(this,'i-shoulder')">Shoulder</button>
     <button class="tab-btn" onclick="switchTab(this,'i-knee')">Knee</button>
     <button class="tab-btn" onclick="switchTab(this,'i-back')">Low Back</button>
+    <button class="tab-btn" onclick="switchTab(this,'i-hip')">Hip</button>
+    <button class="tab-btn" onclick="switchTab(this,'i-elbow')">Elbow</button>
+    <button class="tab-btn" onclick="switchTab(this,'i-neck')">Neck</button>
+    <button class="tab-btn" onclick="switchTab(this,'i-lungs')">Lungs & Breathing</button>
     <button class="tab-btn" onclick="switchTab(this,'i-prevention')">Prevention</button>
   </div>
   <div class="tab-panel active" id="i-shoulder">
@@ -1114,6 +1233,82 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
   <div class="tab-panel" id="i-back">
     <div class="content-block"><h4>LOW BACK PAIN</h4><ul><li>Cause: tight hip flexors + weak glutes + weak deep core</li><li>Daily hip flexor stretching (90/90, couch stretch)</li><li>Glute activation: hip thrusts, clamshells</li><li>Dead bug for deep core stability</li></ul></div>
   </div>
+  <div class="tab-panel" id="i-hip">
+    <div class="warn-box"><strong>Hip impingement and flexor tightness</strong> show up most in breaststroke and butterfly swimmers, where the hip moves through a large range under load every single cycle.</div>
+    <div class="grid-2">
+      <div class="content-block"><h4>CAUSES</h4><ul>
+        <li>Repetitive breaststroke whip-kick external rotation under load</li>
+        <li>Femoroacetabular impingement (FAI) from years of forced hip ROM</li>
+        <li>Chronically tight hip flexors from the prone swimming position</li>
+        <li>Weak glute medius — lets the hip drop or rotate during the kick</li>
+        <li>Butterfly's repeated hip-driven undulation without adequate mobility work</li>
+      </ul></div>
+      <div class="content-block"><h4>PREVENTION</h4><ul>
+        <li>90/90 hip switches daily — builds rotational range in both directions</li>
+        <li>Glute medius activation: banded clamshells, monster walks, 3×/week</li>
+        <li>Couch stretch for hip flexor length, 2 min per side daily</li>
+        <li>Limit breaststroke whip-kick volume during growth spurts in younger swimmers</li>
+        <li>Any pinching pain at the front of the hip during kick — stop and get it assessed, don't swim through it</li>
+      </ul></div>
+    </div>
+    <div class="content-block"><h4>RETURN TO KICK AFTER HIP PAIN</h4><ul>
+      <li><strong>Phase 1:</strong> Flutter or dolphin kick only — no breaststroke whip-kick</li>
+      <li><strong>Phase 2:</strong> Slow, shallow-range breaststroke kick on the back, focused on pain-free range only</li>
+      <li><strong>Phase 3:</strong> Full kick volume, reintroduced at 50% of normal load for the first week back</li>
+    </ul></div>
+  </div>
+  <div class="tab-panel" id="i-elbow">
+    <div class="content-block"><h4>SWIMMER'S ELBOW (MEDIAL/LATERAL EPICONDYLITIS)</h4>
+      <p>Less common than shoulder issues but shows up in swimmers who paddle-train heavily or have a flat, dropped-elbow catch that loads the forearm flexors and extensors instead of the lat and pec.</p>
+      <ul>
+        <li><strong>Primary cause:</strong> excessive paddle volume before the forearm has built tolerance</li>
+        <li><strong>Secondary cause:</strong> a catch that relies on wrist/forearm flexion instead of a high elbow — the small muscles around the elbow take over for the big back muscles</li>
+        <li><strong>Prevention:</strong> introduce paddles gradually over weeks, not days; fix the high-elbow catch first so the lat does the work</li>
+        <li><strong>Dryland:</strong> wrist curls and reverse wrist curls, 3×12, to build tendon tolerance</li>
+        <li><strong>Self-test:</strong> pain when gripping or extending the wrist against resistance points to the elbow, not the shoulder</li>
+      </ul>
+    </div>
+  </div>
+  <div class="tab-panel" id="i-neck">
+    <div class="content-block"><h4>NECK PAIN — BREATHING AND HEAD POSITION</h4>
+      <p>Neck pain in swimmers is almost always a head-position problem, not a neck-strength problem. Habitually lifting the head to breathe instead of rotating it within the body's bow wave puts repetitive strain on the cervical spine across thousands of strokes per week.</p>
+      <ul>
+        <li><strong>Freestyle:</strong> lifting the head to breathe instead of rotating with the body roll — fix the stroke before treating the symptom</li>
+        <li><strong>Backstroke:</strong> Duck-drill imbalance or chronic chin-tuck looking at the feet — keep the neck neutral</li>
+        <li><strong>Breaststroke:</strong> lifting the chin to breathe instead of riding the body's natural lift from the pull</li>
+        <li><strong>Prevention:</strong> daily neck CARs (controlled articular rotations), and film yourself breathing from above to check for head lift</li>
+        <li><strong>Persistent neck pain unrelated to a recent technique change</strong> warrants a look from a physio rather than continued self-treatment</li>
+      </ul>
+    </div>
+  </div>
+  <div class="tab-panel" id="i-lungs">
+    <div class="warn-box"><strong>Breathing issues in swimmers are common and often under-discussed.</strong> Chlorine exposure, breath-holding training, and the unique mechanics of swim breathing all play a role.</div>
+    <div class="grid-2">
+      <div class="content-block"><h4>EXERCISE-INDUCED BRONCHOCONSTRICTION (EIB)</h4>
+        <ul>
+          <li>Significantly more common in competitive swimmers than the general athletic population, likely linked to chronic low-level chlorine byproduct exposure in indoor pools</li>
+          <li>Symptoms: coughing, wheezing, or chest tightness during or after hard sets — easy to mistake for "just being out of breath"</li>
+          <li>If symptoms appear consistently with intensity (not just once), get evaluated by a doctor rather than assuming it's normal fatigue</li>
+          <li>Good pool ventilation and showering promptly after practice reduce chlorine byproduct exposure</li>
+        </ul>
+      </div>
+      <div class="content-block"><h4>UNDERWATER WORK & BREATH-HOLDING SAFETY</h4>
+        <ul>
+          <li>Shallow water blackout is a real risk from repeated breath-holding or hyperventilation before underwater swimming — it can happen with no warning symptoms</li>
+          <li>Never practice extended underwater distance alone, and never hyperventilate before a long underwater swim to "load up on oxygen"</li>
+          <li>UW training sets (15m off the wall) at normal training volumes are not the same risk category as deliberate breath-hold/static apnea training — the latter needs supervision and should not be self-coached from generic advice</li>
+          <li>Coaches should know the difference between healthy UW kick technique work and breath-hold training that carries real risk</li>
+        </ul>
+      </div>
+    </div>
+    <div class="content-block"><h4>GENERAL RESPIRATORY HEALTH FOR SWIMMERS</h4>
+      <ul>
+        <li>A persistent cough, recurring chest tightness, or breathing that feels disproportionately hard relative to your fitness level are reasons to see a doctor, not push through</li>
+        <li>Asthma is manageable for competitive swimmers with proper diagnosis and treatment — many elite swimmers compete successfully with diagnosed asthma</li>
+        <li>This section is informational only and does not replace medical evaluation for breathing symptoms</li>
+      </ul>
+    </div>
+  </div>
   <div class="tab-panel" id="i-prevention">
     <div class="success-box"><strong>Load management is #1.</strong> Volume increases of no more than 10% per week.</div>
     <div class="content-block"><h4>DAILY PREVENTION ROUTINE (10 MIN)</h4><ul>
@@ -1122,8 +1317,68 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
     </ul></div>
   </div>
 </div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
 </div>
+
+<!-- SEASON & CUTS PAGE — time-aware: knows today's date, current season, meet calendar -->
+<div class="page" id="page-season">
+<div class="section-wrap narrow">
+  <div class="section-eyebrow">Time-Aware</div>
+  <div class="section-title">SEASON & <span>MEET CALENDAR</span></div>
+  <p class="section-intro">Reads today's date to tell you where you are in the swim season — short course or long course, and what's coming up on the national calendar.</p>
+
+  <div id="season-now-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--r16);padding:1.75rem;margin-bottom:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem">
+      <div>
+        <div id="season-today" style="font-family:var(--fh);font-size:1.9rem;letter-spacing:1px;color:var(--cyan)">—</div>
+        <div id="season-phase" style="font-family:var(--fm);font-size:0.68rem;letter-spacing:2px;color:var(--white3);text-transform:uppercase;margin-top:4px">—</div>
+      </div>
+      <div class="badge cyan" id="season-course-badge" style="margin-bottom:0">—</div>
+    </div>
+    <p id="season-blurb" style="font-size:0.88rem;color:var(--white2);line-height:1.85;font-weight:300">—</p>
+  </div>
+
+  <div class="section-eyebrow" style="margin-top:0">2025–26 National Meet Calendar</div>
+  <div class="table-wrap"><table class="data-table" id="season-meet-table"><thead><tr><th>Meet</th><th>Dates</th><th>Course</th><th>Status</th></tr></thead><tbody>
+    <!-- filled by JS using real dates, with live countdown/status -->
+  </tbody></table></div>
+  <p style="font-size:0.74rem;color:var(--white4);margin-top:0.6rem;line-height:1.6">Dates reflect the published 2025–26 USA Swimming national events calendar as of mid-2026 and are subject to official updates — always confirm with usaswimming.org before planning travel.</p>
+
+  <div class="divider"></div>
+  <div class="section-eyebrow">Cuts & Motivational Standards</div>
+  <div class="section-title" style="font-size:2.2rem">FUTURES, JUNIORS<span>, & NATIONAL CUTS</span></div>
+  <div class="warn-box"><strong>Exact cut times aren't shown here on purpose.</strong> Futures, Speedo Junior Nationals, Toyota Nationals, and the B/BB/A/AA/AAA/AAAA Motivational Standards are each a full table of times split by event, age group, gender, and course (SCY/LCM) — and they get revised. Rather than risk showing you a stale or wrong number for a swim that matters, this links straight to the official current standard.</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-tag" style="color:var(--gold)">National (Zoned) Meet</div>
+      <h3>FUTURES</h3>
+      <p>Entry point to the national meet pipeline — between Sectionals and Speedo Junior Nationals. Zoned, so the qualifying time depends on your zone.</p>
+      <a href="https://www.usaswimming.org/times/time-standards" target="_blank" class="btn-ghost-sm" style="display:inline-block;text-decoration:none">View official Futures standards →</a>
+    </div>
+    <div class="card">
+      <div class="card-tag" style="color:var(--cyan)">18 & Under</div>
+      <h3>SPEEDO JUNIOR NATIONALS</h3>
+      <p>Summer (LCM) and Winter (SCY) editions. Summer Juniors 2026 is set for August 3–7 in Irvine, CA. Standards differ by edition and are faster than Futures.</p>
+      <a href="https://www.usaswimming.org/times/time-standards" target="_blank" class="btn-ghost-sm" style="display:inline-block;text-decoration:none">View official Juniors standards →</a>
+    </div>
+    <div class="card">
+      <div class="card-tag" style="color:var(--purple)">Open / Senior</div>
+      <h3>TOYOTA NATIONALS & U.S. OPEN</h3>
+      <p>The deepest domestic senior fields. 2026 Toyota Nationals run July 28–Aug 1 in Irvine, CA. U.S. Open cuts are faster than Nationals cuts.</p>
+      <a href="https://www.usaswimming.org/times/time-standards" target="_blank" class="btn-ghost-sm" style="display:inline-block;text-decoration:none">View official Nationals standards →</a>
+    </div>
+    <div class="card">
+      <div class="card-tag" style="color:var(--green)">Age Group Goal-Setting</div>
+      <h3>MOTIVATIONAL TIMES (B → AAAA)</h3>
+      <p>The 2024–2028 National Age Group Motivational Standards — six tiers from B to AAAA, used to set and track season goals at any age.</p>
+      <a href="https://www.usaswimming.org/times/time-standards" target="_blank" class="btn-ghost-sm" style="display:inline-block;text-decoration:none">View official Motivational standards →</a>
+    </div>
+  </div>
+  <div class="info-box" style="margin-top:1.5rem"><strong>Want your specific cut?</strong> Ask the AI Coach for help interpreting the standard once you've pulled your event, age, and gender from the official PDF — it can help you build a season plan around it, but it won't guess at the number itself.</div>
+</div>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro</p></div></footer>
+</div>
+
 
 <!-- AI COACH PAGE -->
 <div class="page" id="page-ai">
@@ -1174,7 +1429,7 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
   </div>
 </div>
 <div style="height:4rem"></div>
-<footer><div class="footer-bottom"><p>&copy; 2026 SwimIQ Pro — Free Forever. No Ads.</p><p>Powered by Claude AI · Streaming · Built for serious swimmers</p></div></footer>
+<footer><div class="footer-bottom"><p>&copy; 2025 SwimIQ Pro — Free Forever. No Ads.</p><p>Powered by Claude AI · Streaming · Built for serious swimmers</p></div></footer>
 </div>
 
 <!-- ACCESS GATE — JS defined before markup so buttons work immediately -->
@@ -1277,6 +1532,12 @@ function showPage(name){
   if(nav) nav.classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
   initReveal();
+  if (name === 'visualizer' && typeof ensureViz3DReady === 'function') {
+    setTimeout(ensureViz3DReady, 30);
+  }
+  if (name === 'season' && typeof renderSeasonPage === 'function') {
+    renderSeasonPage();
+  }
 }
 function switchTab(btn,id){
   btn.parentElement.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1310,684 +1571,738 @@ document.addEventListener('DOMContentLoaded',initReveal);
   }
 })();
 
-// ─── REALISTIC SWIMMER VISUALIZER ─────────────────────────────────────────
-// Draws a swimmer as a smooth bezier-curve silhouette — filled body shape with
-// gradient muscle shading, not sticks. The swimmer is viewed from the side,
-// shaped like a real human body, with limbs as thick rounded curves that
-// animate fluidly between keyframes.
+// ─── 3D SWIMMER VISUALIZER (real Three.js, smooth-shaded humanoid) ────────
+// Lazy-initializes the first time the visualizer page is shown, so it
+// doesn't pay any cost while the user is elsewhere on the site.
+let viz3DInitialized = false;
+let scene, camera, renderer, controls;
+// SCENE SETUP — runs once, lazily, the first time the visualizer page opens
+// ═══════════════════════════════════════════════════════════════════════
+let water, grid; // referenced inside animate loop
 
-const vizCanvas = document.getElementById('viz3d');
-const vizCtx = vizCanvas ? vizCanvas.getContext('2d') : null;
-let vizPlaying = true, vizSpeed = 1, vizStroke = 'freestyle', vizT = 0;
-let vizShowForces = true, vizAnimId = null;
+function initViz3D() {
+  const container = document.getElementById('viz3d-container');
+  if (!container) return;
 
-// ── Stroke definitions ─────────────────────────────────────────────────────
-// Each stroke has phases. Each phase defines:
-//   duration (relative weight), physics values, coaching desc,
-//   and a pose() function that returns all body parts at parameter t ∈ [0,1].
-//
-// Body parts are drawn as thick bezier-curve tubes:
-//   head (circle), torso (ellipse+taper), arms (2 bezier tubes), legs (2 bezier tubes)
-//
-// All coordinates are in a normalized space where:
-//   centre of mass = (0, 0)
-//   swimmer length ≈ 2.0 units (scaled to canvas at render time)
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x040d18, 4, 12);
 
-function lerp(a, b, t) { return a + (b - a) * t; }
-function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
-function lerpA(a, b, t) {
-  const e = easeInOut(t);
-  return { x: lerp(a.x, b.x, e), y: lerp(a.y, b.y, e) };
+  camera = new THREE.PerspectiveCamera(42, container.clientWidth/container.clientHeight, 0.1, 100);
+  camera.position.set(2.8, 1.4, 3.4);
+
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.setClearColor(0x040d18, 1);
+  container.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0.9, 0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 1.5;
+  controls.maxDistance = 8;
+  controls.maxPolarAngle = Math.PI * 0.92;
+
+  // Lighting
+  scene.add(new THREE.HemisphereLight(0x88ccff, 0x081020, 0.55));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.3);
+  keyLight.position.set(3, 5, 4);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(1024,1024);
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x00d4ff, 0.5);
+  rimLight.position.set(-3, 1, -3);
+  scene.add(rimLight);
+
+  // Water surface plane (semi-transparent, animated ripple via vertex shader)
+  const waterGeo = new THREE.PlaneGeometry(14, 14, 80, 80);
+  const waterMat = new THREE.ShaderMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0x00d4ff) } },
+    vertexShader: `
+      uniform float time;
+      varying float vWave;
+      void main() {
+        vec3 p = position;
+        float w = sin(p.x*1.6 + time*1.1) * 0.025 + cos(p.y*1.3 - time*0.9) * 0.02;
+        p.z += w;
+        vWave = w;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying float vWave;
+      uniform vec3 color;
+      void main() {
+        float a = 0.10 + vWave * 2.0;
+        gl_FragColor = vec4(color, clamp(a, 0.03, 0.22));
+      }
+    `
+  });
+  water = new THREE.Mesh(waterGeo, waterMat);
+  water.rotation.x = -Math.PI/2;
+  water.position.y = 0.55;
+  scene.add(water);
+
+  // Floor grid (pool bottom feel)
+  grid = new THREE.GridHelper(14, 28, 0x00d4ff, 0x0c2840);
+  grid.position.y = -1.1;
+  grid.material.opacity = 0.25;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  // Force-vector arrow group (added/removed from scene as needed)
+  vizForceGroup = new THREE.Group();
+  scene.add(vizForceGroup);
+
+  viz3DInitialized = true;
 }
 
-// A "pose" is { hip, shoulder, head, armL, armR, legL, legR, bodyRoll, undulate }
-// Each arm = [shoulder, elbow, wrist, hand]  (4 points)
-// Each leg = [hip, knee, ankle, foot]        (4 points)
+// ═══════════════════════════════════════════════════════════════════════
+// HUMANOID RIG BUILDER
+// ═══════════════════════════════════════════════════════════════════════
+// Helper: tapered limb segment with joint sphere at the pivot (top) end.
+// Returns { pivot, mesh } where pivot is a THREE.Group you rotate.
+function makeSegment(length, rTop, rBot, material, segments=14) {
+  const pivot = new THREE.Group();
+  const geo = new THREE.CylinderGeometry(rTop, rBot, length, segments, 1, false);
+  geo.translate(0, -length/2, 0);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  pivot.add(mesh);
+  const jointGeo = new THREE.SphereGeometry(rTop*1.08, segments, 10);
+  const joint = new THREE.Mesh(jointGeo, material);
+  joint.castShadow = true;
+  pivot.add(joint);
+  pivot.userData.length = length;
+  pivot.userData.mesh = mesh;
+  return pivot;
+}
+
+function buildSwimmer(baseColor) {
+  const root = new THREE.Group(); // overall body translate/roll/undulate
+
+  const mat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.38, metalness: 0.06 });
+  const matDim = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.5, metalness: 0.04 });
+  matDim.color.multiplyScalar(0.72);
+
+  // ── Pelvis / hips (root of skeleton) ──
+  const hips = new THREE.Group();
+  hips.position.set(0, 0, 0);
+  root.add(hips);
+  const pelvisGeo = new THREE.CylinderGeometry(0.155, 0.13, 0.22, 14);
+  const pelvisMesh = new THREE.Mesh(pelvisGeo, mat);
+  pelvisMesh.castShadow = true;
+  hips.add(pelvisMesh);
+
+  // ── Spine -> chest ──
+  const spine = makeSegment(0.42, 0.155, 0.19, mat, 16);
+  spine.position.set(0, 0.10, 0);
+  hips.add(spine);
+
+  // ── Neck -> head ──
+  const neck = makeSegment(0.10, 0.06, 0.075, mat, 10);
+  neck.position.set(0, 0.42, 0);
+  spine.add(neck);
+  const headGeo = new THREE.SphereGeometry(0.105, 18, 14);
+  headGeo.scale(0.92, 1.06, 1.0);
+  const head = new THREE.Mesh(headGeo, mat);
+  head.position.set(0, 0.16, 0.01);
+  head.castShadow = true;
+  neck.add(head);
+  // cap accent
+  const capGeo = new THREE.SphereGeometry(0.108, 18, 14, 0, Math.PI*2, 0, Math.PI*0.55);
+  const cap = new THREE.Mesh(capGeo, matDim);
+  cap.position.copy(head.position);
+  cap.position.y += 0.012;
+  neck.add(cap);
+  // goggles
+  const goggleMat = new THREE.MeshStandardMaterial({color:0x041018, roughness:0.2, metalness:0.4});
+  const gL = new THREE.Mesh(new THREE.SphereGeometry(0.026,10,8), goggleMat);
+  gL.position.set(-0.04, 0.155, 0.085); gL.scale.set(1,1,0.6);
+  const gR = gL.clone(); gR.position.x = 0.04;
+  neck.add(gL, gR);
+
+  // ── Shoulders + arms ──
+  function buildArm(side) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.20, 0.36, 0);
+    spine.add(shoulder);
+    const upperArm = makeSegment(0.30, 0.052, 0.044, mat, 12);
+    shoulder.add(upperArm);
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.30, 0);
+    upperArm.add(elbow);
+    const forearm = makeSegment(0.27, 0.042, 0.034, mat, 12);
+    elbow.add(forearm);
+    const wrist = new THREE.Group();
+    wrist.position.set(0, -0.27, 0);
+    forearm.add(wrist);
+    const handGeo = new THREE.SphereGeometry(0.05, 12, 10);
+    handGeo.scale(0.62, 1.35, 0.34);
+    const hand = new THREE.Mesh(handGeo, mat);
+    hand.position.set(0, -0.07, 0);
+    hand.castShadow = true;
+    wrist.add(hand);
+    return { shoulder, upperArm, elbow, forearm, wrist, hand };
+  }
+  const armL = buildArm(1);
+  const armR = buildArm(-1);
+
+  // ── Hips joints + legs ──
+  function buildLeg(side) {
+    const hipJ = new THREE.Group();
+    hipJ.position.set(side * 0.115, -0.10, 0);
+    hips.add(hipJ);
+    const thigh = makeSegment(0.40, 0.10, 0.075, mat, 14);
+    hipJ.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.40, 0);
+    thigh.add(knee);
+    const shin = makeSegment(0.38, 0.07, 0.05, mat, 14);
+    knee.add(shin);
+    const ankle = new THREE.Group();
+    ankle.position.set(0, -0.38, 0);
+    shin.add(ankle);
+    const footGeo = new THREE.SphereGeometry(0.052, 12, 10);
+    footGeo.scale(0.7, 0.4, 1.7);
+    const foot = new THREE.Mesh(footGeo, mat);
+    foot.position.set(0, -0.02, 0.07);
+    foot.castShadow = true;
+    ankle.add(foot);
+    return { hipJ, thigh, knee, shin, ankle, foot };
+  }
+  const legL = buildLeg(1);
+  const legR = buildLeg(-1);
+
+  return { root, hips, spine, neck, head, armL, armR, legL, legR, mat, matDim };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// STROKE KEYFRAME DATA
+// Angles in degrees: { sh:[x,y,z], el:[x], hi:[x,y,z], kn:[x] }
+// x-rotation = flex forward/back, used for the main swing plane
+// ═══════════════════════════════════════════════════════════════════════
+const DEG = Math.PI/180;
 
 const STROKES = {
+  freestyle: {
+    color: 0x00d4ff, rollAmp: 24,
+    // R arm runs through the SAME poses as L, offset across the cycle, but
+    // MIRRORED across the body centerline: sh.y and sh.z are sign-flipped
+    // since L and R shoulders sit on opposite sides of X=0. sh.x, el, hi,
+    // kn stay the same (not side-dependent).
+    // Recovery is split into two sub-keyframes (elbow-up/out, then
+    // forward-reaching) so the arm visibly swings UP AND OVER the water
+    // instead of slerping the short way back through the pull.
+    phases: [
+      { name:'Entry & Extension', dur:0.16, drag:26, thrust:14, lift:7, vel:1.65, eff:55,
+        desc:'Hand enters narrow at 10-15°, arm extends fully overhead to load the lat before the catch. Body rolls toward the entry side, around 45-50° at elite level.',
+        L:{ sh:[170,0,8],    el:[8],  hi:[20,0,0],  kn:[10] },
+        R:{ sh:[-95,-55,70], el:[105], hi:[-18,0,0], kn:[28] } },
+      { name:'Catch', dur:0.12, drag:40, thrust:60, lift:24, vel:1.82, eff:67,
+        desc:'Elbow rises high and flares outward, wrist presses down — the forearm becomes a vertical paddle. This is the highest-leverage moment in the entire stroke.',
+        L:{ sh:[125,10,10], el:[58], hi:[24,0,0],  kn:[8]  },
+        R:{ sh:[150,20,15], el:[70], hi:[22,0,0],  kn:[34] } },
+      { name:'Pull', dur:0.18, drag:66, thrust:142, lift:42, vel:2.18, eff:76,
+        desc:'The hand accelerates from catch to hip along a gentle S-curve. Lat and pec fire maximally — hand speed at exit is 3-4x the speed at the catch.',
+        L:{ sh:[55,5,4],    el:[95], hi:[18,0,0],  kn:[30] },
+        R:{ sh:[170,0,-8],  el:[8],  hi:[20,0,0],  kn:[10] } },
+      { name:'Push & Finish', dur:0.13, drag:50, thrust:86, lift:20, vel:2.04, eff:71,
+        desc:'The hand pushes past the hip, thumb brushing the thigh. Stopping early at the belly button loses roughly 30% of this phase\'s propulsion.',
+        L:{ sh:[-12,0,2],   el:[20], hi:[12,0,0],  kn:[8]  },
+        R:{ sh:[125,-10,-10], el:[58], hi:[24,0,0], kn:[8]  } },
+      { name:'Recovery — Elbow Up', dur:0.16, drag:33, thrust:18, lift:6, vel:1.74, eff:58,
+        desc:'The elbow leads, bent and lifted clear of the water, swinging out and forward — relaxed, with minimal drag, while the opposite arm pulls and the kick maintains velocity.',
+        L:{ sh:[-95,55,-70], el:[105], hi:[22,0,0], kn:[34] },
+        R:{ sh:[55,-5,-4],  el:[95], hi:[18,0,0],  kn:[30] } },
+      { name:'Recovery — Reaching Forward', dur:0.16, drag:30, thrust:16, lift:6, vel:1.70, eff:57,
+        desc:'The arm straightens and reaches forward over the water, lining up for a narrow entry just inside the shoulder line.',
+        L:{ sh:[150,-20,-15], el:[70], hi:[20,0,0], kn:[10] },
+        R:{ sh:[-12,0,-2],  el:[20], hi:[12,0,0],  kn:[8]  } }
+    ]
+  },
+  backstroke: {
+    color: 0x00e599, rollAmp: 26,
+    // L poses verified against the rig's actual rotation math so the arm
+    // genuinely swings OUTWARD during Out-Sweep (positive sh.z = away from
+    // body for the L shoulder). R = L's pose shape, offset by half the cycle
+    // for alternating timing, with sh.z negated for a true mirror -- sh.x,
+    // sh.y, el, hi, kn are not side-dependent and stay identical.
+    phases: [
+      { name:'Pinky Entry', dur:0.18, drag:23, thrust:11, lift:5, vel:1.55, eff:51,
+        desc:'Pinky-first entry directly above the shoulder, arm fully extended past the head. The hips stay high near the surface throughout — even a small hip drop costs real speed.',
+        L:{ sh:[-170, 0, 8], el:[6], hi:[18, 0, 0], kn:[8] },
+        R:{ sh:[-30, 5, -15], el:[20], hi:[16, 0, 0], kn:[12] } },
+      { name:'Catch & Lat Load', dur:0.13, drag:36, thrust:52, lift:20, vel:1.7, eff:60,
+        desc:'The lat engages as the arm extends and the elbow begins to bend, loading the pulling side as the hips counter-rotate.',
+        L:{ sh:[-145, 10, 35], el:[35], hi:[22, 0, 0], kn:[10] },
+        R:{ sh:[5, -5, 0], el:[10], hi:[10, 0, 0], kn:[8] } },
+      { name:'Out-Sweep', dur:0.16, drag:55, thrust:100, lift:30, vel:1.95, eff:66,
+        desc:'The hand sweeps OUT to the side, well clear of the shoulder line, catching undisturbed water — the first half of the backstroke S-curve.',
+        L:{ sh:[-100, 30, 85], el:[80], hi:[18, 0, 0], kn:[34] },
+        R:{ sh:[-160, -10, 8], el:[8], hi:[20, 0, 0], kn:[10] } },
+      { name:'In-Sweep to Hip', dur:0.18, drag:62, thrust:130, lift:34, vel:2.05, eff:70,
+        desc:'The hand sweeps back in toward the hip as the elbow extends, finishing with peak thrust as the lat and tricep fully engage near hip exit.',
+        L:{ sh:[-30, 5, 15], el:[20], hi:[16, 0, 0], kn:[12] },
+        R:{ sh:[-170, 0, -8], el:[6], hi:[18, 0, 0], kn:[8] } },
+      { name:'Hip Exit', dur:0.13, drag:46, thrust:80, lift:16, vel:1.9, eff:64,
+        desc:'The hand finishes past the hip toward the feet, thumb leading, at the swimmer\'s point of maximum rotation.',
+        L:{ sh:[5, -5, 0], el:[10], hi:[10, 0, 0], kn:[8] },
+        R:{ sh:[-145, 10, -35], el:[35], hi:[22, 0, 0], kn:[10] } },
+      { name:'Recovery Arc', dur:0.22, drag:28, thrust:14, lift:4, vel:1.6, eff:53,
+        desc:'A straight-arm recovery passes over the water with hips held high while the kick maintains momentum and sets up the rotation for the next entry.',
+        L:{ sh:[-160, -10, -8], el:[8], hi:[20, 0, 0], kn:[10] },
+        R:{ sh:[-100, 30, -85], el:[80], hi:[18, 0, 0], kn:[34] } }
+    ]
+  },
+  breaststroke: {
+    color: 0xf5a623, rollAmp: 0,
+    phases: [
+      { name:'Glide & Streamline', dur:0.26, drag:16, thrust:4, lift:2, vel:1.80, eff:83,
+        desc:'Full streamline immediately after the kick — drag at its absolute minimum and velocity at its peak. Begin the pull the instant velocity starts to decay.',
+        L:{ sh:[172,0,4], el:[4], hi:[2,0,0], kn:[2] },
+        R:{ sh:[172,0,-4], el:[4], hi:[2,0,0], kn:[2] } },
+      { name:'Out-Scull & Catch', dur:0.15, drag:44, thrust:70, lift:18, vel:1.64, eff:63,
+        desc:'Hands press outward to shoulder width with elbows held high, setting the catch depth that the in-sweep will drive forward.',
+        L:{ sh:[110,0,40], el:[35], hi:[4,0,0], kn:[4] },
+        R:{ sh:[110,0,-40], el:[35], hi:[4,0,0], kn:[4] } },
+      { name:'In-Sweep & Breath', dur:0.18, drag:64, thrust:118, lift:30, vel:1.50, eff:57,
+        desc:'Hands sweep powerfully inward as the elbows tuck — the body\'s own lift carries the head up to breathe, never a separate neck lift.',
+        L:{ sh:[55,0,18], el:[100], hi:[6,0,0], kn:[6] },
+        R:{ sh:[55,0,-18], el:[100], hi:[6,0,0], kn:[6] } },
+      { name:'Kick Recovery', dur:0.20, drag:92, thrust:22, lift:7, vel:1.27, eff:34,
+        desc:'Heels draw up narrow, never wide — wide recovery spikes drag dramatically. This is the highest-drag moment of the entire stroke.',
+        L:{ sh:[165,0,6], el:[6], hi:[35,0,8], kn:[125] },
+        R:{ sh:[165,0,-6], el:[6], hi:[35,0,-8], kn:[125] } },
+      { name:'Kick & Drive', dur:0.21, drag:48, thrust:136, lift:24, vel:1.88, eff:74,
+        desc:'Feet sweep out, around, and together in a circular arc, generating 60-70% of total breaststroke propulsion. Symmetry between the two legs is critical.',
+        L:{ sh:[172,0,4], el:[4], hi:[8,0,18], kn:[20] },
+        R:{ sh:[172,0,-4], el:[4], hi:[8,0,-18], kn:[20] } }
+    ]
+  },
+  butterfly: {
+    color: 0xa855f7, rollAmp: 0, undulate: true,
+    // Recovery is split so the arms visibly LIFT CLEAR of the water (out and
+    // up to the sides, low sh.x / high |sh.z|) before swinging forward and
+    // down into the next entry -- the "coming out of the water" motion.
+    phases: [
+      { name:'Entry & Extension', dur:0.17, drag:38, thrust:44, lift:20, vel:1.72, eff:59,
+        desc:'Both hands enter together at shoulder width as the chest presses down, initiating the undulation wave. The first dolphin kick fires here.',
+        L:{ sh:[160,0,12], el:[10], hi:[18,0,0],  kn:[32] },
+        R:{ sh:[160,0,-12], el:[10], hi:[18,0,0], kn:[32] } },
+      { name:'Catch', dur:0.11, drag:54, thrust:84, lift:36, vel:1.88, eff:67,
+        desc:'A simultaneous high-elbow catch on both arms — a large propulsive surface engages just as the undulation wave reaches the hips.',
+        L:{ sh:[120,0,22], el:[48], hi:[12,0,0],  kn:[14] },
+        R:{ sh:[120,0,-22], el:[48], hi:[12,0,0], kn:[14] } },
+      { name:'Keyhole Pull', dur:0.17, drag:70, thrust:158, lift:46, vel:2.14, eff:73,
+        desc:'Hands trace a keyhole path inward then back out as lat and pec fire together — the highest-velocity instant of the entire cycle, timed with the second kick.',
+        L:{ sh:[50,0,10], el:[100], hi:[-8,0,0],  kn:[36] },
+        R:{ sh:[50,0,-10], el:[100], hi:[-8,0,0], kn:[36] } },
+      { name:'Push & Exit', dur:0.12, drag:56, thrust:100, lift:28, vel:1.96, eff:69,
+        desc:'Hands push back and out past the hips as the body reaches the low point of its undulation, completing the second kick\'s downbeat.',
+        L:{ sh:[-10,0,6], el:[40], hi:[14,0,0],  kn:[14] },
+        R:{ sh:[-10,0,-6], el:[40], hi:[14,0,0], kn:[14] } },
+      { name:'Clear the Water', dur:0.16, drag:46, thrust:32, lift:14, vel:1.78, eff:60,
+        desc:'Straight arms sweep outward and lift clear of the surface — the hands clear the water to the sides of the hips before swinging forward, low drag throughout.',
+        L:{ sh:[-25,0,75], el:[12], hi:[20,0,0],  kn:[20] },
+        R:{ sh:[-25,0,-75], el:[12], hi:[20,0,0], kn:[20] } },
+      { name:'Recovery Wave', dur:0.27, drag:40, thrust:22, lift:9, vel:1.66, eff:54,
+        desc:'Arms swing forward together over the water as the chest rises — the wave must travel continuously, since any stiffness in the torso breaks it before it reaches the feet.',
+        L:{ sh:[155,0,16], el:[14], hi:[20,0,0],  kn:[18] },
+        R:{ sh:[155,0,-16], el:[14], hi:[20,0,0], kn:[18] } }
+    ]
+  },
+  dolphin: {
+    color: 0xff7043, rollAmp: 0, undulate: true,
+    phases: [
+      { name:'Peak Streamline', dur:0.16, drag:21, thrust:7, lift:4, vel:2.56, eff:88,
+        desc:'Maximum streamline — hands stacked, arms locked past the ears, core completely rigid. Push-off velocity can exceed 7.5 m/s, faster than any swum stroke.',
+        L:{ sh:[172,0,5], el:[4], hi:[2,0,0], kn:[3] },
+        R:{ sh:[172,0,-5], el:[4], hi:[2,0,0], kn:[3] } },
+      { name:'Hip Load', dur:0.18, drag:30, thrust:40, lift:16, vel:2.40, eff:81,
+        desc:'The hips drive downward to begin the wave while the core stays rigid, transmitting force from hip to foot rather than from the torso.',
+        L:{ sh:[172,0,5], el:[4], hi:[15,0,0], kn:[18] },
+        R:{ sh:[172,0,-5], el:[4], hi:[15,0,0], kn:[18] } },
+      { name:'Downbeat Peak', dur:0.20, drag:46, thrust:154, lift:60, vel:2.62, eff:84,
+        desc:'The foot reaches its lowest point for maximum downward thrust. Ankle flexibility, not leg strength, is the single biggest limiter of kick speed for most swimmers.',
+        L:{ sh:[172,0,5], el:[4], hi:[28,0,0], kn:[42] },
+        R:{ sh:[172,0,-5], el:[4], hi:[28,0,0], kn:[42] } },
+      { name:'Upbeat Drive', dur:0.21, drag:33, thrust:84, lift:38, vel:2.46, eff:79,
+        desc:'The hips rise as the calf fires concentrically — roughly 30% of total kick propulsion comes from this upbeat, a phase most swimmers underuse.',
+        L:{ sh:[172,0,5], el:[4], hi:[-8,0,0], kn:[10] },
+        R:{ sh:[172,0,-5], el:[4], hi:[-8,0,0], kn:[10] } },
+      { name:'Upbeat Peak', dur:0.25, drag:24, thrust:50, lift:26, vel:2.58, eff:85,
+        desc:'The foot returns to neutral as the body reaches its highest streamline point — velocity peaks here just before the next downbeat begins loading.',
+        L:{ sh:[172,0,5], el:[4], hi:[-15,0,0], kn:[5] },
+        R:{ sh:[172,0,-5], el:[4], hi:[-15,0,0], kn:[5] } }
+    ]
+  }
+};
 
-freestyle: {
-  name: 'Freestyle', color: '#00d4ff',
-  phases: [
-    { name: 'Entry & Reach', dur: 0.18, drag: 28, thrust: 15, lift: 8, vel: 1.65, eff: 56,
-      desc: 'Hand enters narrow at 10–15°. Arm extends fully to load the lat before the catch begins. Hip rotates 42° loading the pulling side. Drag is minimal — the body is as close to streamline as possible during any part of the stroke.',
-      poseA: {
-        roll: -38, undulate: 0,
-        hip:  { x:-0.18, y: 0.04 },
-        shldr:{ x:-0.08, y:-0.14 },
-        head: { x: 0.02, y:-0.22 },
-        aL:   [{ x:-0.08,y:-0.14},{x: 0.38,y:-0.26},{x: 0.72,y:-0.24},{x: 0.90,y:-0.22}],
-        aR:   [{ x:-0.08,y:-0.14},{x:-0.22,y:-0.06},{x:-0.38,y: 0.08},{x:-0.50,y: 0.14}],
-        lL:   [{ x:-0.18,y: 0.04},{x:-0.38,y: 0.10},{x:-0.62,y: 0.08},{x:-0.80,y: 0.12}],
-        lR:   [{ x:-0.18,y: 0.04},{x:-0.40,y:-0.02},{x:-0.64,y:-0.06},{x:-0.82,y:-0.04}]
-      }},
-    { name: 'High Elbow Catch', dur: 0.14, drag: 44, thrust: 68, lift: 28, vel: 1.85, eff: 69,
-      desc: 'Elbow rises and flares outward — wrist presses down creating a vertical forearm paddle against still water. The highest-ROI skill in freestyle. Propulsion begins the moment the elbow clears the shoulder plane.',
-      poseA: {
-        roll: -32, undulate: 3,
-        hip:  { x:-0.18, y: 0.05 },
-        shldr:{ x:-0.08, y:-0.15 },
-        head: { x: 0.02, y:-0.22 },
-        aL:   [{ x:-0.08,y:-0.15},{x: 0.30,y:-0.32},{x: 0.50,y:-0.14},{x: 0.56,y: 0.02}],
-        aR:   [{ x:-0.08,y:-0.15},{x:-0.26,y:-0.04},{x:-0.40,y: 0.10},{x:-0.50,y: 0.18}],
-        lL:   [{ x:-0.18,y: 0.05},{x:-0.36,y: 0.14},{x:-0.58,y: 0.10},{x:-0.76,y: 0.16}],
-        lR:   [{ x:-0.18,y: 0.05},{x:-0.40,y:-0.04},{x:-0.62,y:-0.10},{x:-0.80,y:-0.06}]
-      }},
-    { name: 'Pull Phase', dur: 0.22, drag: 70, thrust: 148, lift: 44, vel: 2.20, eff: 77,
-      desc: 'Hand accelerates from catch to hip along an S-curve. Lat and pec fire maximally — this is peak thrust. Hand speed at exit is 3–4× catch speed. Stopping at the belly button loses 30% of this phase\'s propulsion.',
-      poseA: {
-        roll: -18, undulate: 6,
-        hip:  { x:-0.16, y: 0.06 },
-        shldr:{ x:-0.06, y:-0.14 },
-        head: { x: 0.02, y:-0.20 },
-        aL:   [{ x:-0.06,y:-0.14},{x: 0.10,y:-0.10},{x: 0.18,y: 0.06},{x: 0.12,y: 0.22}],
-        aR:   [{ x:-0.06,y:-0.14},{x:-0.24,y:-0.02},{x:-0.38,y: 0.12},{x:-0.48,y: 0.22}],
-        lL:   [{ x:-0.16,y: 0.06},{x:-0.34,y: 0.16},{x:-0.56,y: 0.14},{x:-0.74,y: 0.20}],
-        lR:   [{ x:-0.16,y: 0.06},{x:-0.38,y:-0.06},{x:-0.60,y:-0.14},{x:-0.78,y:-0.08}]
-      }},
-    { name: 'Finish & Exit', dur: 0.16, drag: 54, thrust: 90, lift: 24, vel: 2.06, eff: 72,
-      desc: 'Hand pushes past hip — thumb brushes the thigh. Body rotates to the opposite side, pre-loading the next catch. The kick drives hip torque through this exit, linking the pull and the rotation.',
-      poseA: {
-        roll: 10, undulate: 4,
-        hip:  { x:-0.15, y: 0.05 },
-        shldr:{ x:-0.05, y:-0.13 },
-        head: { x: 0.02, y:-0.20 },
-        aL:   [{ x:-0.05,y:-0.13},{x:-0.02,y: 0.04},{x: 0.00,y: 0.20},{x:-0.06,y: 0.34}],
-        aR:   [{ x:-0.05,y:-0.13},{x:-0.22,y:-0.02},{x:-0.36,y: 0.14},{x:-0.46,y: 0.24}],
-        lL:   [{ x:-0.15,y: 0.05},{x:-0.32,y: 0.18},{x:-0.54,y: 0.16},{x:-0.72,y: 0.22}],
-        lR:   [{ x:-0.15,y: 0.05},{x:-0.36,y:-0.08},{x:-0.58,y:-0.16},{x:-0.76,y:-0.10}]
-      }},
-    { name: 'Recovery', dur: 0.30, drag: 36, thrust: 20, lift: 7, vel: 1.76, eff: 59,
-      desc: 'Elbow leads the arm over water — low drag. Body glides on rotation while the kick maintains velocity. The high elbow recovery charges the lat for the next catch. This phase is where stroke rate control lives.',
-      poseA: {
-        roll: 35, undulate: 0,
-        hip:  { x:-0.18, y: 0.04 },
-        shldr:{ x:-0.08, y:-0.14 },
-        head: { x: 0.02, y:-0.22 },
-        aL:   [{ x:-0.08,y:-0.14},{x: 0.04,y:-0.36},{x: 0.28,y:-0.32},{x: 0.52,y:-0.20}],
-        aR:   [{ x:-0.08,y:-0.14},{x:-0.24,y:-0.02},{x:-0.38,y: 0.10},{x:-0.50,y: 0.16}],
-        lL:   [{ x:-0.18,y: 0.04},{x:-0.36,y: 0.12},{x:-0.58,y: 0.08},{x:-0.76,y: 0.14}],
-        lR:   [{ x:-0.18,y: 0.04},{x:-0.40,y:-0.02},{x:-0.64,y:-0.08},{x:-0.82,y:-0.04}]
-      }}
-  ]
-},
-
-backstroke: {
-  name: 'Backstroke', color: '#00e599',
-  phases: [
-    { name: 'Pinky Entry', dur: 0.18, drag: 24, thrust: 12, lift: 6, vel: 1.55, eff: 52,
-      desc: 'Pinky-first entry directly above the shoulder. Full arm extension past the head loads the lat before the catch. 45–55° shoulder rotation. Hips stay high and near the surface — any hip drop creates exponentially more drag.',
-      poseA: {
-        roll: 50, undulate: 0,
-        hip:  { x:-0.18, y: 0.03 },
-        shldr:{ x:-0.08, y:-0.12 },
-        head: { x: 0.02, y:-0.24 },
-        aL:   [{ x:-0.08,y:-0.12},{x: 0.28,y:-0.20},{x: 0.62,y:-0.18},{x: 0.86,y:-0.16}],
-        aR:   [{ x:-0.08,y:-0.12},{x:-0.22,y: 0.02},{x:-0.38,y: 0.14},{x:-0.50,y: 0.20}],
-        lL:   [{ x:-0.18,y: 0.03},{x:-0.38,y: 0.08},{x:-0.62,y: 0.06},{x:-0.80,y: 0.10}],
-        lR:   [{ x:-0.18,y: 0.03},{x:-0.40,y:-0.04},{x:-0.64,y:-0.08},{x:-0.82,y:-0.04}]
-      }},
-    { name: 'S-Curve Pull', dur: 0.24, drag: 62, thrust: 130, lift: 38, vel: 2.02, eff: 70,
-      desc: 'Hand follows an S-curve: outward, inward, outward. Each segment pushes against undisturbed water. Lift force from the curved palm adds a forward component throughout. Peak thrust from fully engaged lat and tricep at hip exit.',
-      poseA: {
-        roll: 30, undulate: 4,
-        hip:  { x:-0.16, y: 0.04 },
-        shldr:{ x:-0.06, y:-0.13 },
-        head: { x: 0.02, y:-0.24 },
-        aL:   [{ x:-0.06,y:-0.13},{x: 0.12,y:-0.08},{x: 0.18,y: 0.08},{x: 0.10,y: 0.24}],
-        aR:   [{ x:-0.06,y:-0.13},{x:-0.22,y: 0.02},{x:-0.36,y: 0.16},{x:-0.46,y: 0.24}],
-        lL:   [{ x:-0.16,y: 0.04},{x:-0.34,y: 0.12},{x:-0.56,y: 0.10},{x:-0.74,y: 0.16}],
-        lR:   [{ x:-0.16,y: 0.04},{x:-0.38,y:-0.06},{x:-0.60,y:-0.12},{x:-0.78,y:-0.08}]
-      }},
-    { name: 'Recovery Arc', dur: 0.28, drag: 30, thrust: 16, lift: 5, vel: 1.62, eff: 54,
-      desc: 'Straight-arm recovery over the water. Body glides while hips stay high. Kick maintains momentum and drives the rotation that sets up the next pinky entry. The flag count from the backstroke flags (5m from wall) governs every approach.',
-      poseA: {
-        roll: -45, undulate: 0,
-        hip:  { x:-0.18, y: 0.03 },
-        shldr:{ x:-0.08, y:-0.12 },
-        head: { x: 0.02, y:-0.24 },
-        aL:   [{ x:-0.08,y:-0.12},{x: 0.06,y:-0.34},{x: 0.30,y:-0.28},{x: 0.52,y:-0.16}],
-        aR:   [{ x:-0.08,y:-0.12},{x:-0.22,y: 0.04},{x:-0.36,y: 0.16},{x:-0.46,y: 0.22}],
-        lL:   [{ x:-0.18,y: 0.03},{x:-0.36,y: 0.10},{x:-0.58,y: 0.08},{x:-0.76,y: 0.12}],
-        lR:   [{ x:-0.18,y: 0.03},{x:-0.40,y:-0.04},{x:-0.62,y:-0.10},{x:-0.80,y:-0.06}]
-      }}
-  ]
-},
-
-breaststroke: {
-  name: 'Breaststroke', color: '#f5a623',
-  phases: [
-    { name: 'Glide & Streamline', dur: 0.26, drag: 18, thrust: 5, lift: 2, vel: 1.82, eff: 84,
-      desc: 'Full streamline after the kick — drag at absolute minimum, velocity at its peak. Hands stacked, arms past ears, feet together, core rigid. This is why the glide exists. Begin the pull the instant you sense velocity starting to decay.',
-      poseA: {
-        roll: 0, undulate: 0,
-        hip:  { x:-0.16, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.20 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.14},{x: 0.62,y:-0.12},{x: 0.86,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.06},{x: 0.62,y:-0.04},{x: 0.86,y:-0.02}],
-        lL:   [{ x:-0.16,y: 0.02},{x:-0.40,y: 0.06},{x:-0.66,y: 0.04},{x:-0.86,y: 0.06}],
-        lR:   [{ x:-0.16,y: 0.02},{x:-0.40,y:-0.02},{x:-0.66,y:-0.00},{x:-0.86,y: 0.02}]
-      }},
-    { name: 'Out-Scull & Catch', dur: 0.15, drag: 46, thrust: 74, lift: 20, vel: 1.66, eff: 65,
-      desc: 'Hands press OUT to shoulder width — wrists pronate, elbows stay high. The propulsive forearm surfaces engage on undisturbed water. This sets the catch depth before the in-sweep drives propulsion. Rushing here collapses elbows and kills power.',
-      poseA: {
-        roll: 0, undulate: 2,
-        hip:  { x:-0.16, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.16 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.20,y:-0.22},{x: 0.42,y:-0.16},{x: 0.52,y:-0.04}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.20,y: 0.02},{x: 0.42,y: 0.08},{x: 0.52,y: 0.08}],
-        lL:   [{ x:-0.16,y: 0.02},{x:-0.38,y: 0.08},{x:-0.62,y: 0.06},{x:-0.82,y: 0.10}],
-        lR:   [{ x:-0.16,y: 0.02},{x:-0.38,y:-0.04},{x:-0.62,y:-0.02},{x:-0.82,y: 0.02}]
-      }},
-    { name: 'In-Sweep & Breath', dur: 0.18, drag: 66, thrust: 120, lift: 32, vel: 1.52, eff: 58,
-      desc: 'Hands sweep inward powerfully — elbows tuck, body rises naturally for the breath. Do NOT lift the head; ride the body\'s own lift. Peaty barely clears the surface even at race pace. The in-sweep drives the majority of breaststroke arm propulsion.',
-      poseA: {
-        roll: 0, undulate: 8,
-        hip:  { x:-0.14, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.08 },
-        head: { x: 0.02, y:-0.10 },
-        aL:   [{ x:-0.04,y:-0.08},{x: 0.16,y:-0.04},{x: 0.26,y: 0.06},{x: 0.20,y: 0.14}],
-        aR:   [{ x:-0.04,y:-0.08},{x: 0.16,y: 0.04},{x: 0.26,y: 0.12},{x: 0.20,y: 0.18}],
-        lL:   [{ x:-0.14,y: 0.02},{x:-0.34,y: 0.10},{x:-0.56,y: 0.08},{x:-0.74,y: 0.14}],
-        lR:   [{ x:-0.14,y: 0.02},{x:-0.34,y:-0.06},{x:-0.56,y:-0.04},{x:-0.74,y: 0.02}]
-      }},
-    { name: 'Kick Recovery', dur: 0.20, drag: 95, thrust: 24, lift: 8, vel: 1.28, eff: 34,
-      desc: 'Heels draw up NARROW — not wide. Wide heel recovery spikes drag catastrophically. Hip flexors load for the explosive kick. This is the most drag-intensive moment in breaststroke. Speed up this phase by pulling heels in tight and fast.',
-      poseA: {
-        roll: 0, undulate: 0,
-        hip:  { x:-0.14, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.18 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.28,y:-0.14},{x: 0.58,y:-0.12},{x: 0.80,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.28,y:-0.06},{x: 0.58,y:-0.04},{x: 0.80,y:-0.02}],
-        lL:   [{ x:-0.14,y: 0.02},{x:-0.24,y: 0.18},{x:-0.28,y: 0.34},{x:-0.26,y: 0.46}],
-        lR:   [{ x:-0.14,y: 0.02},{x:-0.24,y: 0.14},{x:-0.28,y: 0.28},{x:-0.26,y: 0.40}]
-      }},
-    { name: 'Kick & Drive', dur: 0.22, drag: 50, thrust: 140, lift: 26, vel: 1.90, eff: 75,
-      desc: 'Feet sweep out, around, and together in a circular arc. 60–70% of total breaststroke propulsion. Symmetric kick critical — even 10% asymmetry is measurable in split times. Streamline extension after the kick is NOT optional — it captures all the momentum just generated.',
-      poseA: {
-        roll: 0, undulate: 0,
-        hip:  { x:-0.16, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.20 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.14},{x: 0.62,y:-0.12},{x: 0.86,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.06},{x: 0.62,y:-0.04},{x: 0.86,y:-0.02}],
-        lL:   [{ x:-0.16,y: 0.02},{x:-0.30,y: 0.22},{x:-0.52,y: 0.16},{x:-0.76,y: 0.06}],
-        lR:   [{ x:-0.16,y: 0.02},{x:-0.30,y:-0.18},{x:-0.52,y:-0.12},{x:-0.76,y: 0.02}]
-      }}
-  ]
-},
-
-butterfly: {
-  name: 'Butterfly', color: '#a855f7',
-  phases: [
-    { name: 'Entry & Extension', dur: 0.18, drag: 40, thrust: 46, lift: 22, vel: 1.74, eff: 60,
-      desc: 'Both hands enter simultaneously shoulder-width apart. Chest presses DOWN initiating the undulation wave. First dolphin kick fires here, loading the body for the pull. The wave must originate at the chest — if it starts at the hips, power is lost before it reaches the feet.',
-      poseA: {
-        roll: 0, undulate: -12,
-        hip:  { x:-0.16, y: 0.08 },
-        shldr:{ x:-0.04, y:-0.16 },
-        head: { x: 0.02, y:-0.24 },
-        aL:   [{ x:-0.04,y:-0.16},{x: 0.28,y:-0.20},{x: 0.58,y:-0.18},{x: 0.80,y:-0.16}],
-        aR:   [{ x:-0.04,y:-0.16},{x: 0.28,y:-0.08},{x: 0.58,y:-0.06},{x: 0.80,y:-0.04}],
-        lL:   [{ x:-0.16,y: 0.08},{x:-0.34,y: 0.20},{x:-0.56,y: 0.24},{x:-0.72,y: 0.32}],
-        lR:   [{ x:-0.16,y: 0.08},{x:-0.34,y: 0.12},{x:-0.56,y: 0.14},{x:-0.72,y: 0.18}]
-      }},
-    { name: 'Keyhole Pull', dur: 0.22, drag: 74, thrust: 162, lift: 50, vel: 2.18, eff: 75,
-      desc: 'Hands trace keyhole path — out, in past each other, out to exit. Lat and pec fire maximally. Second dolphin kick fires as hands push back — this is the highest-velocity moment in the stroke cycle. The undulation wave reaches peak hip amplitude here.',
-      poseA: {
-        roll: 0, undulate: 14,
-        hip:  { x:-0.14, y:-0.08 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.14 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.10,y:-0.06},{x: 0.16,y: 0.08},{x: 0.08,y: 0.22}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.10,y: 0.02},{x: 0.16,y: 0.14},{x: 0.08,y: 0.26}],
-        lL:   [{ x:-0.14,y:-0.08},{x:-0.32,y: 0.10},{x:-0.54,y: 0.20},{x:-0.70,y: 0.36}],
-        lR:   [{ x:-0.14,y:-0.08},{x:-0.32,y: 0.04},{x:-0.54,y: 0.10},{x:-0.70,y: 0.22}]
-      }},
-    { name: 'Recovery Wave', dur: 0.30, drag: 44, thrust: 24, lift: 10, vel: 1.70, eff: 56,
-      desc: 'Arms recover forward low over water. Chest rises as arms swing forward. Hips drive down setting up the next entry. The recovery wave must be continuous — any stiffness in the thoracic spine breaks propagation and kills the second kick.',
-      poseA: {
-        roll: 0, undulate: -8,
-        hip:  { x:-0.16, y: 0.10 },
-        shldr:{ x:-0.04, y:-0.14 },
-        head: { x: 0.02, y:-0.22 },
-        aL:   [{ x:-0.04,y:-0.14},{x: 0.08,y:-0.38},{x: 0.38,y:-0.32},{x: 0.64,y:-0.20}],
-        aR:   [{ x:-0.04,y:-0.14},{x: 0.08,y:-0.26},{x: 0.38,y:-0.20},{x: 0.64,y:-0.08}],
-        lL:   [{ x:-0.16,y: 0.10},{x:-0.34,y: 0.22},{x:-0.56,y: 0.26},{x:-0.74,y: 0.34}],
-        lR:   [{ x:-0.16,y: 0.10},{x:-0.34,y: 0.14},{x:-0.56,y: 0.16},{x:-0.74,y: 0.20}]
-      }}
-  ]
-},
-
-dolphin: {
-  name: 'Dolphin Kick', color: '#ff7043',
-  phases: [
-    { name: 'Peak Streamline', dur: 0.15, drag: 22, thrust: 8, lift: 5, vel: 2.58, eff: 89,
-      desc: 'Maximum streamline — hands stacked dominant-on-top, arms locked past ears, core completely rigid. Push-off velocity can reach 7.5+ m/s. Every extra centimetre of body width at this speed adds drag as the square of velocity. A true blade, not a banana.',
-      poseA: {
-        roll: 0, undulate: 0,
-        hip:  { x:-0.16, y: 0.02 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.18 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.13},{x: 0.62,y:-0.11},{x: 0.88,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.07},{x: 0.62,y:-0.05},{x: 0.88,y:-0.04}],
-        lL:   [{ x:-0.16,y: 0.02},{x:-0.40,y: 0.05},{x:-0.66,y: 0.04},{x:-0.88,y: 0.06}],
-        lR:   [{ x:-0.16,y: 0.02},{x:-0.40,y:-0.01},{x:-0.66,y: 0.00},{x:-0.88,y: 0.02}]
-      }},
-    { name: 'Downbeat', dur: 0.22, drag: 50, thrust: 158, lift: 64, vel: 2.64, eff: 86,
-      desc: 'Hip drives downward, wave propagates to feet. Knee bends 30–40° max — this is not a bicycle kick. Ankle plantarflexion is the single biggest performance limiter. The downbeat is where most kick power is generated, but the upbeat is what separates elite from sub-elite.',
-      poseA: {
-        roll: 0, undulate: 20,
-        hip:  { x:-0.14, y:-0.06 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.18 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.13},{x: 0.62,y:-0.11},{x: 0.88,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.07},{x: 0.62,y:-0.05},{x: 0.88,y:-0.04}],
-        lL:   [{ x:-0.14,y:-0.06},{x:-0.32,y: 0.12},{x:-0.54,y: 0.28},{x:-0.72,y: 0.42}],
-        lR:   [{ x:-0.14,y:-0.06},{x:-0.32,y: 0.06},{x:-0.54,y: 0.18},{x:-0.72,y: 0.30}]
-      }},
-    { name: 'Upbeat', dur: 0.25, drag: 30, thrust: 86, lift: 40, vel: 2.52, eff: 82,
-      desc: 'Hip rises, calf fires concentrically. 30% of kick propulsion comes from the upbeat — most swimmers underestimate and underuse this phase. The upbeat is NOT passive recovery. Engage the calves through the full range.',
-      poseA: {
-        roll: 0, undulate: -16,
-        hip:  { x:-0.16, y: 0.08 },
-        shldr:{ x:-0.04, y:-0.10 },
-        head: { x: 0.02, y:-0.18 },
-        aL:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.13},{x: 0.62,y:-0.11},{x: 0.88,y:-0.10}],
-        aR:   [{ x:-0.04,y:-0.10},{x: 0.30,y:-0.07},{x: 0.62,y:-0.05},{x: 0.88,y:-0.04}],
-        lL:   [{ x:-0.16,y: 0.08},{x:-0.36,y:-0.04},{x:-0.58,y:-0.12},{x:-0.76,y:-0.06}],
-        lR:   [{ x:-0.16,y: 0.08},{x:-0.36,y: 0.00},{x:-0.58,y:-0.06},{x:-0.76,y: 0.00}]
-      }}
-  ]
+// ═══════════════════════════════════════════════════════════════════════
+// ANIMATION DRIVER — quaternion slerp between keyframes, per joint
+// ═══════════════════════════════════════════════════════════════════════
+function eulerQuat(xDeg, yDeg, zDeg) {
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(xDeg*DEG, (yDeg||0)*DEG, (zDeg||0)*DEG, 'XYZ'));
 }
 
-}; // end STROKES
+let swimmer = null;
+let currentStroke = 'freestyle';
+let clockT = 0;
+let playing = true;
+let speed = 1;
 
-// ─── CANVAS SETUP ─────────────────────────────────────────────────────────
-function resizeVizCanvas() {
-  if (!vizCanvas) return;
-  const wrap = vizCanvas.parentElement;
-  vizCanvas.width  = wrap.clientWidth || 700;
-  vizCanvas.height = Math.min(520, Math.max(300, wrap.clientWidth * 0.52));
+function rebuildSwimmer(strokeKey) {
+  if (swimmer) scene.remove(swimmer.root);
+  const sd = STROKES[strokeKey];
+  swimmer = buildSwimmer(sd.color);
+  swimmer.root.position.set(0, 0.95, 0);
+  scene.add(swimmer.root);
 }
 
-function buildPhaseBar(stroke) {
+function easeInOut(t) { return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+
+function applyPose(rig, sideObj, phaseAData, phaseBData, t) {
+  const e = easeInOut(t);
+  const qA_sh = eulerQuat(...phaseAData.sh);
+  const qB_sh = eulerQuat(...phaseBData.sh);
+  const qSh = qA_sh.clone().slerp(qB_sh, e);
+  sideObj.shoulder.quaternion.copy(qSh);
+
+  const elA = phaseAData.el[0]*DEG, elB = phaseBData.el[0]*DEG;
+  sideObj.elbow.rotation.set(elA + (elB-elA)*e, 0, 0);
+}
+
+function applyLegPose(legObj, phaseAData, phaseBData, t) {
+  const e = easeInOut(t);
+  const qA = eulerQuat(...phaseAData.hi);
+  const qB = eulerQuat(...phaseBData.hi);
+  legObj.hipJ.quaternion.copy(qA.clone().slerp(qB, e));
+  const knA = phaseAData.kn[0]*DEG, knB = phaseBData.kn[0]*DEG;
+  legObj.knee.rotation.set(-(knA + (knB-knA)*e), 0, 0);
+}
+
+let physState = { drag:0, thrust:0, lift:0, vel:0, eff:0 };
+let currentPhaseInfo = { name:'', desc:'', idx:0, total:0 };
+
+function updateSwimmer(dtPhase) {
+  const sd = STROKES[currentStroke];
+  const phases = sd.phases;
+  const totalDur = phases.reduce((s,p)=>s+p.dur, 0);
+  const cycleT = ((clockT % totalDur) + totalDur) % totalDur;
+
+  let cum = 0, idx = 0, localT = 0;
+  for (let i=0;i<phases.length;i++){
+    if (cycleT < cum + phases[i].dur) { idx = i; localT = (cycleT-cum)/phases[i].dur; break; }
+    cum += phases[i].dur;
+  }
+  const nextIdx = (idx+1) % phases.length;
+  const A = phases[idx], B = phases[nextIdx];
+
+  applyPose(swimmer, swimmer.armL, A.L, B.L, localT);
+  applyPose(swimmer, swimmer.armR, A.R, B.R, localT);
+  applyLegPose(swimmer.legL, A.L, B.L, localT);
+  applyLegPose(swimmer.legR, A.R, B.R, localT);
+
+  // Body roll (freestyle/backstroke) — rotates around the swimmer's own long
+  // axis (Y, head-to-feet) so it reads as a swimming roll, not a sideways tip.
+  // One full smooth sine wave per stroke cycle (cycleT/totalDur), not re-anchored
+  // every phase, so it doesn't snap or wobble like a bobble-head.
+  if (sd.rollAmp) {
+    const rollPhase = (cycleT / totalDur) * Math.PI * 2;
+    swimmer.root.rotation.y = Math.sin(rollPhase) * sd.rollAmp * DEG;
+    swimmer.root.rotation.z = 0;
+  } else {
+    swimmer.root.rotation.y = 0;
+    swimmer.root.rotation.z = 0;
+  }
+  if (sd.undulate) {
+    const wavePhase = (cycleT/totalDur) * Math.PI*2;
+    swimmer.spine.rotation.x = Math.sin(wavePhase) * 0.18;
+    swimmer.root.position.y = 0.95 + Math.sin(wavePhase + 0.6) * 0.05;
+  } else {
+    swimmer.spine.rotation.x = 0;
+    swimmer.root.position.y = 0.95;
+  }
+
+  const e = easeInOut(localT);
+
+  // physics interpolation
+  const drag = THREE.MathUtils.lerp(A.drag, B.drag, e);
+  const thrust = THREE.MathUtils.lerp(A.thrust, B.thrust, e);
+  const lift = THREE.MathUtils.lerp(A.lift, B.lift, e);
+  const vel = THREE.MathUtils.lerp(A.vel, B.vel, e);
+  const eff = THREE.MathUtils.lerp(A.eff, B.eff, e);
+  physState = { drag, thrust, lift, vel, eff };
+  currentPhaseInfo = { name: A.name, desc: A.desc, idx, total: phases.length };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// VIEW PRESETS (animated camera tween)
+// ═══════════════════════════════════════════════════════════════════════
+const VIEWS = {
+  side:           { pos:[2.8, 1.4, 0.0],  target:[0, 0.95, 0] },
+  front:          { pos:[0.0, 1.2, 3.2],  target:[0, 0.95, 0] },
+  top:            { pos:[0.0, 4.2, 0.05], target:[0, 0.95, 0] },
+  'three-quarter':{ pos:[2.4, 1.8, 2.4],  target:[0, 0.95, 0] }
+};
+function setView3D(name) {
+  if (!viz3DInitialized) return;
+  const v = VIEWS[name]; if(!v) return;
+  const startPos = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const endPos = new THREE.Vector3(...v.pos);
+  const endTarget = new THREE.Vector3(...v.target);
+  let t0 = performance.now();
+  controls.enabled = false;
+  function tweenStep(){
+    const t = Math.min(1, (performance.now()-t0)/650);
+    const e = easeInOut(t);
+    camera.position.lerpVectors(startPos, endPos, e);
+    controls.target.lerpVectors(startTarget, endTarget, e);
+    if (t<1) requestAnimationFrame(tweenStep);
+    else controls.enabled = true;
+  }
+  tweenStep();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// FORCE VECTOR ARROWS (rendered as real 3D objects beside the swimmer)
+// ═══════════════════════════════════════════════════════════════════════
+let vizForceGroup = null;
+let vizShowForces3D = true;
+
+function makeArrow3D(color) {
+  const grp = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.5, roughness:0.4 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 8), mat);
+  shaft.rotation.x = Math.PI/2;
+  shaft.position.z = 0.5;
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 10), mat);
+  head.rotation.x = Math.PI/2;
+  head.position.z = 1.0;
+  grp.add(shaft, head);
+  grp.userData = { shaft, head, mat };
+  return grp;
+}
+
+function buildForceArrows() {
+  vizForceGroup.clear();
+  vizForceGroup.userData.drag   = makeArrow3D(0xff4444);
+  vizForceGroup.userData.thrust = makeArrow3D(0x00ff88);
+  vizForceGroup.userData.lift   = makeArrow3D(0x4488ff);
+  vizForceGroup.userData.net    = makeArrow3D(0xffaa00);
+  vizForceGroup.add(vizForceGroup.userData.drag, vizForceGroup.userData.thrust, vizForceGroup.userData.lift, vizForceGroup.userData.net);
+}
+
+function pointArrow(arrowGrp, originY, dirVec, magnitude, maxLen) {
+  const len = Math.max(0.001, Math.min(maxLen, magnitude * 0.012));
+  arrowGrp.visible = len > 0.04 && vizShowForces3D;
+  if (!arrowGrp.visible) return;
+  arrowGrp.position.set(0, originY, 0);
+  arrowGrp.scale.set(1, 1, len);
+  const target = new THREE.Vector3().copy(dirVec).normalize();
+  const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), target);
+  arrowGrp.quaternion.copy(quat);
+}
+
+function toggleForces3D() { vizShowForces3D = !vizShowForces3D; }
+
+// ═══════════════════════════════════════════════════════════════════════
+// PHASE BAR + INFO PANEL SYNC (writes into the existing site DOM)
+// ═══════════════════════════════════════════════════════════════════════
+function buildPhaseBar3D(strokeKey) {
   const bar = document.getElementById('viz-phase-bar');
   if (!bar) return;
-  const phases = STROKES[stroke].phases;
-  bar.innerHTML = phases.map((p, i) =>
-    `<div class="phase-step" id="ps-${i}" onclick="jumpToPhase(${i})">${p.name}</div>`
+  const phases = STROKES[strokeKey].phases;
+  bar.innerHTML = phases.map((p,i) =>
+    `<div class="phase-step" id="ps3d-${i}" onclick="jumpToPhase3D(${i})">${p.name}</div>`
   ).join('');
 }
-
-function jumpToPhase(i) {
-  const phases = STROKES[vizStroke].phases;
+function jumpToPhase3D(i) {
+  const phases = STROKES[currentStroke].phases;
   let t = 0;
-  for (let j = 0; j < i; j++) t += phases[j].dur;
-  vizT = t;
+  for (let j=0;j<i;j++) t += phases[j].dur;
+  clockT = t;
+}
+function updatePhaseBar3D(idx) {
+  document.querySelectorAll('.phase-step').forEach((el,i) => el.classList.toggle('active', i===idx));
 }
 
-function updatePhaseBar(idx) {
-  document.querySelectorAll('.phase-step').forEach((el, i) =>
-    el.classList.toggle('active', i === idx)
-  );
-}
-
-// ─── BODY DRAWING ─────────────────────────────────────────────────────────
-// Draw a limb as a thick rounded tube along a cubic bezier path.
-// pts = [p0,p1,p2,p3] in canvas coords. width tapers from w0 at p0 to w1 at p3.
-function drawTube(ctx, pts, w0, w1, fillStyle, alpha) {
-  if (!pts || pts.length < 4) return;
-  const [p0, p1, p2, p3] = pts;
-  // Sample the bezier at many points to build an offset polygon
-  const N = 20;
-  const top = [], bot = [];
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;
-    const mt = 1 - t;
-    // Bezier point
-    const bx = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x;
-    const by = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y;
-    // Bezier tangent (derivative)
-    const dx = 3*(mt*mt*(p1.x-p0.x) + 2*mt*t*(p2.x-p1.x) + t*t*(p3.x-p2.x));
-    const dy = 3*(mt*mt*(p1.y-p0.y) + 2*mt*t*(p2.y-p1.y) + t*t*(p3.y-p2.y));
-    const len = Math.sqrt(dx*dx + dy*dy) || 1;
-    const nx = -dy / len, ny = dx / len;
-    const w = lerp(w0, w1, t) / 2;
-    top.push({ x: bx + nx*w, y: by + ny*w });
-    bot.push({ x: bx - nx*w, y: by - ny*w });
-  }
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = fillStyle;
-  ctx.beginPath();
-  ctx.moveTo(top[0].x, top[0].y);
-  for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
-  // round cap at end
-  ctx.arc(pts[3].x, pts[3].y, w1/2, Math.atan2(top[N].y - bot[N].y, top[N].x - bot[N].x) - Math.PI/2, Math.atan2(top[N].y - bot[N].y, top[N].x - bot[N].x) + Math.PI/2);
-  for (let i = bot.length-1; i >= 0; i--) ctx.lineTo(bot[i].x, bot[i].y);
-  ctx.arc(pts[0].x, pts[0].y, w0/2, Math.atan2(bot[0].y - top[0].y, bot[0].x - top[0].x) - Math.PI/2, Math.atan2(bot[0].y - top[0].y, bot[0].x - top[0].x) + Math.PI/2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-// Interpolate a pose (lerpPose between poseA of phase i and poseA of phase i+1)
-function interpPose(phA, phB, t) {
-  const e = easeInOut(t);
-  function iA(a, b) {
-    return a.map((p, i) => ({ x: lerp(p.x, b[i].x, e), y: lerp(p.y, b[i].y, e) }));
-  }
-  function iP(a, b) { return { x: lerp(a.x, b.x, e), y: lerp(a.y, b.y, e) }; }
-  return {
-    roll: lerp(phA.roll, phB.roll, e),
-    undulate: lerp(phA.undulate, phB.undulate, e),
-    hip:   iP(phA.hip,   phB.hip),
-    shldr: iP(phA.shldr, phB.shldr),
-    head:  iP(phA.head,  phB.head),
-    aL: iA(phA.aL, phB.aL),
-    aR: iA(phA.aR, phB.aR),
-    lL: iA(phA.lL, phB.lL),
-    lR: iA(phA.lR, phB.lR),
-  };
-}
-
-// ─── MAIN DRAW LOOP ───────────────────────────────────────────────────────
-function drawViz() {
-  if (!vizCtx || !vizCanvas || vizCanvas.width === 0) return;
-  const W = vizCanvas.width, H = vizCanvas.height;
-  const ctx = vizCtx;
-  const sd = STROKES[vizStroke];
-  const phases = sd.phases;
-
-  // ── Find current phase + local t ──
-  const totalDur = phases.reduce((s, p) => s + p.dur, 0);
-  const cycleT = ((vizT % totalDur) + totalDur) % totalDur;
-  let cumDur = 0, phaseIdx = 0, localT = 0;
-  for (let i = 0; i < phases.length; i++) {
-    if (cycleT < cumDur + phases[i].dur) {
-      phaseIdx = i;
-      localT = (cycleT - cumDur) / phases[i].dur;
-      break;
-    }
-    cumDur += phases[i].dur;
-  }
-  const nextIdx = (phaseIdx + 1) % phases.length;
-  const curPh = phases[phaseIdx];
-  const nextPh = phases[nextIdx];
-
-  // Interpolate physics
-  const e = easeInOut(localT);
-  const drag   = lerp(curPh.drag,   nextPh.drag,   e);
-  const thrust = lerp(curPh.thrust, nextPh.thrust, e);
-  const lift   = lerp(curPh.lift,   nextPh.lift,   e);
-  const vel    = lerp(curPh.vel,    nextPh.vel,    e);
-  const eff    = lerp(curPh.eff,    nextPh.eff,    e);
-
-  // Interpolate pose
-  const pose = interpPose(curPh.poseA, nextPh.poseA, localT);
-
-  // ── Background ──
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#040d18');
-  bg.addColorStop(1, '#061828');
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-
-  // Subtle grid
-  ctx.strokeStyle = 'rgba(0,212,255,0.04)'; ctx.lineWidth = 0.5;
-  for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-  for (let y = 0; y < H; y += 50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-
-  // Water surface
-  const wl = H * 0.26;
-  const wg = ctx.createLinearGradient(0, wl-6, 0, wl+30);
-  wg.addColorStop(0, 'rgba(0,212,255,0.22)');
-  wg.addColorStop(1, 'rgba(0,212,255,0)');
-  ctx.fillStyle = wg; ctx.fillRect(0, wl-6, W, 36);
-  ctx.strokeStyle = 'rgba(0,212,255,0.35)'; ctx.lineWidth = 1.5;
-  ctx.setLineDash([10, 14]);
-  ctx.beginPath(); ctx.moveTo(0, wl); ctx.lineTo(W, wl); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Animated water shimmer
-  const now = Date.now() * 0.001;
-  for (let i = 0; i < 18; i++) {
-    const wx = (i * 113 + now * 28) % W;
-    const wy = wl + 4 + Math.sin(now * 2.2 + i) * 4;
-    const wa = 0.12 + 0.08 * Math.sin(now * 3 + i * 0.9);
-    ctx.fillStyle = `rgba(0,212,255,${wa})`;
-    ctx.beginPath(); ctx.arc(wx, wy, 1.8, 0, Math.PI*2); ctx.fill();
-  }
-
-  // ── Scale to canvas ──
-  // Scale so a 2-unit long swimmer fits in ~85% of canvas width
-  const scale = W * 0.40;
-  const cx = W * 0.50;
-  const cy = H * 0.56;
-
-  // Apply body roll and undulation
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(pose.roll * Math.PI / 180);
-
-  // Convert normalized pose coords to canvas coords
-  function c(p) { return { x: p.x * scale, y: (p.y + pose.undulate * 0.01) * scale }; }
-  function cA(arr) { return arr.map(c); }
-
-  // ── Body shading gradient ──
-  const skinGrad = ctx.createLinearGradient(-scale*0.1, -scale*0.3, scale*0.1, scale*0.3);
-  skinGrad.addColorStop(0, sd.color + '55');
-  skinGrad.addColorStop(0.4, sd.color + '22');
-  skinGrad.addColorStop(1, sd.color + '08');
-
-  // Suit color (darker)
-  const suitColor = sd.color + '44';
-  const suitDark  = sd.color + '22';
-
-  // ── Leg R (back — dimmer) ──
-  drawTube(ctx, cA(pose.lR), scale*0.09, scale*0.06, sd.color+'30', 0.9);
-
-  // ── Arm R (back — dimmer) ──
-  drawTube(ctx, cA(pose.aR), scale*0.065, scale*0.04, sd.color+'38', 0.9);
-
-  // ── Torso ──
-  // Draw as a thick tube along the hip→shoulder axis
-  const torsoPath = [
-    c(pose.hip),
-    { x: c(pose.hip).x * 0.6 + c(pose.shldr).x * 0.4, y: c(pose.hip).y * 0.5 + c(pose.shldr).y * 0.5 + scale*0.04 },
-    { x: c(pose.hip).x * 0.3 + c(pose.shldr).x * 0.7, y: c(pose.hip).y * 0.3 + c(pose.shldr).y * 0.7 - scale*0.02 },
-    c(pose.shldr)
-  ];
-  // Torso fill — main body mass
-  drawTube(ctx, torsoPath, scale*0.16, scale*0.13, sd.color+'55', 1.0);
-  // Highlight stripe (suit line)
-  drawTube(ctx, torsoPath, scale*0.04, scale*0.03, '#ffffff18', 0.8);
-
-  // ── Leg L (front) ──
-  drawTube(ctx, cA(pose.lL), scale*0.10, scale*0.065, sd.color+'55', 1.0);
-
-  // ── Arm L (front) ──
-  // Brighten arm when it's the pulling arm (based on thrust)
-  const armBright = Math.min(1.0, thrust / 100);
-  const armAlpha = 0.7 + armBright * 0.3;
-  drawTube(ctx, cA(pose.aL), scale*0.075, scale*0.045, sd.color + (Math.round(armBright*64+64).toString(16).padStart(2,'0')), armAlpha);
-
-  // ── Head ──
-  const hc = c(pose.head);
-  const hRad = scale * 0.075;
-  // Head silhouette
-  const headGrad = ctx.createRadialGradient(hc.x - hRad*0.3, hc.y - hRad*0.3, hRad*0.1, hc.x, hc.y, hRad);
-  headGrad.addColorStop(0, sd.color + '88');
-  headGrad.addColorStop(0.6, sd.color + '44');
-  headGrad.addColorStop(1, sd.color + '22');
-  ctx.fillStyle = headGrad;
-  ctx.beginPath(); ctx.arc(hc.x, hc.y, hRad, 0, Math.PI*2); ctx.fill();
-  // Cap straps
-  ctx.strokeStyle = sd.color + '55'; ctx.lineWidth = scale * 0.012;
-  ctx.beginPath(); ctx.arc(hc.x, hc.y, hRad*0.95, -Math.PI*0.3, Math.PI*0.3); ctx.stroke();
-  // Goggles
-  ctx.fillStyle = sd.color + '66';
-  ctx.beginPath(); ctx.arc(hc.x - hRad*0.28, hc.y - hRad*0.12, hRad*0.22, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(hc.x + hRad*0.28, hc.y - hRad*0.12, hRad*0.22, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = sd.color + '99'; ctx.lineWidth = scale*0.008;
-  ctx.beginPath(); ctx.moveTo(hc.x - hRad*0.06, hc.y - hRad*0.12); ctx.lineTo(hc.x + hRad*0.06, hc.y - hRad*0.12); ctx.stroke();
-
-  // ── Body outline glow ──
-  ctx.shadowColor = sd.color; ctx.shadowBlur = 18;
-  ctx.strokeStyle = sd.color + '40'; ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(torsoPath[0].x, torsoPath[0].y);
-  for (let i = 1; i < torsoPath.length; i++) ctx.lineTo(torsoPath[i].x, torsoPath[i].y);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  ctx.restore(); // end body transform
-
-  // ── FORCE VECTORS ──────────────────────────────────────────────────────
-  if (vizShowForces) {
-    const fX = cx, fY = cy;
-    const fs = Math.min(W, H) * 0.0022;
-
-    // Water pressure ellipse
-    ctx.strokeStyle = 'rgba(170,68,255,0.18)';
-    ctx.lineWidth = 2; ctx.setLineDash([6, 8]);
-    ctx.beginPath();
-    ctx.ellipse(fX, fY, scale*0.62, scale*0.22, 0, 0, Math.PI*2);
-    ctx.stroke(); ctx.setLineDash([]);
-
-    // Drag (left)
-    const dragLen = drag * fs * 1.2;
-    drawForceArrow(ctx, fX, fY, fX - dragLen, fY, '#ff4444', 'DRAG', drag.toFixed(0)+'N', scale);
-
-    // Thrust (right)
-    const thrustLen = thrust * fs * 0.9;
-    drawForceArrow(ctx, fX, fY, fX + thrustLen, fY, '#00ff88', 'THRUST', thrust.toFixed(0)+'N', scale);
-
-    // Lift (up)
-    const liftLen = lift * fs * 1.0;
-    if (liftLen > 8) drawForceArrow(ctx, fX, fY, fX, fY - liftLen, '#4488ff', 'LIFT', lift.toFixed(0)+'N', scale);
-
-    // Net (diagonal)
-    const netX = (thrust - drag) * fs * 0.55;
-    const netY = -lift * fs * 0.25;
-    const netMag = Math.sqrt(netX*netX + netY*netY);
-    if (netMag > 10) drawForceArrow(ctx, fX, fY, fX + netX, fY + netY, '#ffaa00', 'NET', '', scale);
-  }
-
-  // ── Update UI ──────────────────────────────────────────────────────────
-  updatePhaseBar(phaseIdx);
-
-  const els = { drag: '#stat-drag', thrust: '#stat-thrust', velocity: '#stat-velocity', efficiency: '#stat-efficiency' };
-  const vals = { drag: drag.toFixed(0), thrust: thrust.toFixed(0), velocity: vel.toFixed(2), efficiency: eff.toFixed(0)+'%' };
-  for (const [key, sel] of Object.entries(els)) {
-    const el = document.querySelector(sel);
-    if (el) el.textContent = vals[key];
-  }
+function syncInfoPanel3D() {
+  const dragEl = document.getElementById('stat-drag');
+  const thrustEl = document.getElementById('stat-thrust');
+  const veloEl = document.getElementById('stat-velocity');
+  const effEl = document.getElementById('stat-efficiency');
+  if (dragEl) dragEl.textContent = physState.drag.toFixed(0);
+  if (thrustEl) thrustEl.textContent = physState.thrust.toFixed(0);
+  if (veloEl) veloEl.textContent = physState.vel.toFixed(2);
+  if (effEl) effEl.textContent = physState.eff.toFixed(0) + '%';
 
   const phaseName = document.getElementById('viz-phase-name');
   const phaseText = document.getElementById('viz-phase-text');
   const strokeName = document.getElementById('viz-stroke-name');
   const physRow = document.getElementById('viz-physics-row');
-  if (phaseName) phaseName.textContent = `Phase ${phaseIdx+1}: ${curPh.name}`;
-  if (strokeName) strokeName.textContent = sd.name;
-  if (phaseText) phaseText.textContent = curPh.desc;
+  if (phaseName) phaseName.textContent = `Phase ${currentPhaseInfo.idx+1}: ${currentPhaseInfo.name}`;
+  if (strokeName) strokeName.textContent = STROKES[currentStroke].name || currentStroke;
+  if (phaseText) phaseText.textContent = currentPhaseInfo.desc;
   if (physRow) physRow.innerHTML = `
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(255,68,68,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:#ff4444;text-transform:uppercase;margin-bottom:4px">Drag</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:#ff4444">${drag.toFixed(0)}<span style="font-size:.7rem">N</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:#ff4444">${physState.drag.toFixed(0)}<span style="font-size:.7rem">N</span></div>
     </div>
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(0,255,136,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:#00ff88;text-transform:uppercase;margin-bottom:4px">Thrust</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:#00ff88">${thrust.toFixed(0)}<span style="font-size:.7rem">N</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:#00ff88">${physState.thrust.toFixed(0)}<span style="font-size:.7rem">N</span></div>
     </div>
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(68,136,255,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:#4488ff;text-transform:uppercase;margin-bottom:4px">Lift</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:#4488ff">${lift.toFixed(0)}<span style="font-size:.7rem">N</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:#4488ff">${physState.lift.toFixed(0)}<span style="font-size:.7rem">N</span></div>
     </div>
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(0,212,255,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:var(--cyan);text-transform:uppercase;margin-bottom:4px">Velocity</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--cyan)">${vel.toFixed(2)}<span style="font-size:.7rem">m/s</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--cyan)">${physState.vel.toFixed(2)}<span style="font-size:.7rem">m/s</span></div>
     </div>
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(255,170,0,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Net Force</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--gold)">${Math.max(0,thrust-drag).toFixed(0)}<span style="font-size:.7rem">N</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--gold)">${Math.max(0,physState.thrust-physState.drag).toFixed(0)}<span style="font-size:.7rem">N</span></div>
     </div>
     <div style="background:var(--navy3);border-radius:var(--r8);padding:.75rem;text-align:center;border:1px solid rgba(0,229,153,.3)">
       <div style="font-family:var(--fm);font-size:.57rem;letter-spacing:1.5px;color:var(--green);text-transform:uppercase;margin-bottom:4px">Efficiency</div>
-      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--green)">${eff.toFixed(0)}<span style="font-size:.7rem">%</span></div>
+      <div style="font-family:var(--fh);font-size:1.4rem;color:var(--green)">${physState.eff.toFixed(0)}<span style="font-size:.7rem">%</span></div>
     </div>`;
+  updatePhaseBar3D(currentPhaseInfo.idx);
 }
 
-function drawForceArrow(ctx, x1, y1, x2, y2, color, label, valLabel, scale) {
-  const dx = x2-x1, dy = y2-y1;
-  const len = Math.sqrt(dx*dx+dy*dy);
-  if (len < 8) return;
-  const nx = dx/len, ny = dy/len;
-  const hLen = Math.min(16, len*0.28), hWid = hLen*0.52;
-
-  ctx.save();
-  ctx.shadowColor = color; ctx.shadowBlur = 10;
-  ctx.strokeStyle = color; ctx.fillStyle = color;
-  ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2-nx*hLen, y2-ny*hLen); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(x2-nx*hLen-ny*hWid, y2-ny*hLen+nx*hWid);
-  ctx.lineTo(x2-nx*hLen+ny*hWid, y2-ny*hLen-nx*hWid);
-  ctx.closePath(); ctx.fill();
-  ctx.shadowBlur = 0;
-
-  if (len > 32) {
-    const lx = (x1+x2)/2 + ny*20;
-    const ly = (y1+y2)/2 - nx*20;
-    ctx.font = `bold ${Math.round(scale*0.026+8)}px "DM Mono",monospace`;
-    ctx.fillStyle = color; ctx.textAlign = 'center';
-    ctx.fillText(label, lx, ly);
-    if (valLabel) {
-      ctx.font = `${Math.round(scale*0.020+7)}px "DM Mono",monospace`;
-      ctx.fillText(valLabel, lx, ly + 13);
-    }
-  }
-  ctx.restore();
-}
-
-function vizLoop() {
-  if (vizPlaying) {
-    const totalDur = STROKES[vizStroke].phases.reduce((s, p) => s + p.dur, 0);
-    vizT = (vizT + 0.006 * vizSpeed) % totalDur;
-  }
-  if (vizCanvas && vizCanvas.width > 0) drawViz();
-  vizAnimId = requestAnimationFrame(vizLoop);
-}
-
-function setStroke(s, btn) {
-  vizStroke = s; vizT = 0;
+// ═══════════════════════════════════════════════════════════════════════
+// PUBLIC UI API (called from buttons in the visualizer page)
+// ═══════════════════════════════════════════════════════════════════════
+function setStroke3D(s, btn) {
+  currentStroke = s; clockT = 0;
+  if (viz3DInitialized) rebuildSwimmer(s);
   document.querySelectorAll('.viz-btn').forEach(b => {
-    if ((b.getAttribute('onclick') || '').includes('setStroke')) b.classList.remove('active');
+    if ((b.getAttribute('onclick')||'').includes('setStroke3D')) b.classList.remove('active');
   });
   if (btn) btn.classList.add('active');
-  buildPhaseBar(s);
+  buildPhaseBar3D(s);
 }
-function togglePlay() {
-  vizPlaying = !vizPlaying;
+function togglePlay3D() {
+  playing = !playing;
   const btn = document.getElementById('vbtn-play');
-  if (btn) btn.textContent = vizPlaying ? '⏸ Pause' : '▶ Play';
+  if (btn) btn.textContent = playing ? '⏸ Pause' : '▶ Play';
 }
-function setSpeed(s) { vizSpeed = s; }
-function toggleForces() { vizShowForces = !vizShowForces; }
-function toggleSkeleton() {} // no-op (no skeleton mode in silhouette renderer)
-function toggleMuscles()  {} // no-op
+function setSpeed3D(s) { speed = s; }
 
-window.addEventListener('resize', resizeVizCanvas);
-document.addEventListener('DOMContentLoaded', () => {
-  resizeVizCanvas();
-  buildPhaseBar('freestyle');
-  vizLoop();
-});
-setTimeout(() => { resizeVizCanvas(); if (!vizAnimId) vizLoop(); }, 100);
+function resizeViz3D() {
+  const container = document.getElementById('viz3d-container');
+  if (!container || !renderer || !camera) return;
+  const w = container.clientWidth || 700;
+  const h = container.clientHeight || 520;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', resizeViz3D);
+
+let lastTime3D = performance.now();
+function animate3D(){
+  requestAnimationFrame(animate3D);
+  if (!viz3DInitialized) return;
+  const now = performance.now();
+  const dt = (now - lastTime3D) / 1000; lastTime3D = now;
+  if (playing) clockT += dt * 0.55 * speed;
+  updateSwimmer(dt);
+  water.material.uniforms.time.value += dt;
+
+  // Force vectors anchored near the swimmer's hips, pointing along world axes
+  if (vizForceGroup && swimmer) {
+    const hipY = swimmer.root.position.y;
+    pointArrow(vizForceGroup.userData.drag,   hipY, new THREE.Vector3(-1,0,0), physState.drag,   1.1);
+    pointArrow(vizForceGroup.userData.thrust, hipY, new THREE.Vector3(1,0,0),  physState.thrust, 1.6);
+    pointArrow(vizForceGroup.userData.lift,   hipY, new THREE.Vector3(0,1,0),  physState.lift,   0.6);
+    const netDir = new THREE.Vector3(physState.thrust - physState.drag, physState.lift*0.4, 0);
+    pointArrow(vizForceGroup.userData.net,    hipY, netDir.lengthSq()>0.001 ? netDir : new THREE.Vector3(1,0,0), netDir.length(), 1.3);
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+  syncInfoPanel3D();
+}
+
+// ─── LAZY INIT — only build the scene the first time the page is opened ──
+function ensureViz3DReady() {
+  if (viz3DInitialized) { resizeViz3D(); return; }
+  initViz3D();
+  buildForceArrows();
+  rebuildSwimmer(currentStroke);
+  buildPhaseBar3D(currentStroke);
+  resizeViz3D();
+  animate3D();
+}
+// ─── SEASON & MEET CALENDAR — time-aware (reads the real device date) ────
+// Meet dates below reflect the published 2025-26 USA Swimming national
+// events calendar. The page never invents specific cut times -- it links
+// to the official standards instead, since those are large tables that
+// vary by event/age/gender/course and get revised.
+const SEASON_MEETS = [
+  { name: 'Toyota U.S. Open',                start: '2025-12-03', end: '2025-12-06', course: 'LCM', tag: 'Senior' },
+  { name: 'Speedo Winter Junior Championships', start: '2025-12-10', end: '2025-12-13', course: 'SCY', tag: 'Junior' },
+  { name: 'Open Water National & Junior Championships', start: '2026-04-02', end: '2026-04-04', course: 'Open Water', tag: 'Senior/Junior' },
+  { name: 'TYR Futures Championships',       start: '2026-07-29', end: '2026-08-01', course: 'LCM', tag: 'Zoned' },
+  { name: 'Toyota National Championships',   start: '2026-07-28', end: '2026-08-01', course: 'LCM', tag: 'Senior' },
+  { name: 'Speedo Summer Junior Championships', start: '2026-08-03', end: '2026-08-07', course: 'LCM', tag: 'Junior' },
+  { name: 'Pan Pacific Championships',       start: '2026-08-12', end: '2026-08-15', course: 'LCM', tag: 'International' },
+];
+
+function seasonPhaseFor(d) {
+  // US club season: roughly Sept-March = short course (SCY) emphasis,
+  // April-August = long course (LCM) championship season.
+  const m = d.getMonth() + 1; // 1-12
+  if (m >= 4 && m <= 8) return { course: 'LCM — Long Course', phase: 'Long Course Season', blurb: 'You\'re in the long-course (50m) part of the year — the season that builds toward Futures, Junior Nationals, and Toyota Nationals. Most championship meets of the year land in this window.' };
+  if (m === 9) return { course: 'SCY — Short Course', phase: 'Early Season', blurb: 'Short course season is just starting. This is base-building time — aerobic volume, technique work, and dryland foundations before championship season ramps up.' };
+  if (m >= 10 && m <= 12) return { course: 'SCY — Short Course', phase: 'Mid Season', blurb: 'You\'re mid short-course season. U.S. Open and Winter Juniors fall in this window for the swimmers who qualify — for everyone else, it\'s a strong stretch for time trials and mid-season meets.' };
+  return { course: 'SCY — Short Course', phase: 'Late Season / Taper Window', blurb: 'Late short-course season — Sectionals and Spring Championship season for many LSCs. A common taper window ahead of championship meets before the transition into long course.' };
+}
+
+function renderSeasonPage() {
+  const todayEl = document.getElementById('season-today');
+  const phaseEl = document.getElementById('season-phase');
+  const courseEl = document.getElementById('season-course-badge');
+  const blurbEl = document.getElementById('season-blurb');
+  const tableBody = document.querySelector('#season-meet-table tbody');
+  if (!todayEl) return; // page not in DOM (shouldn't happen, but stay safe)
+
+  const now = new Date();
+  todayEl.textContent = now.toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  const info = seasonPhaseFor(now);
+  phaseEl.textContent = info.phase;
+  courseEl.textContent = info.course;
+  blurbEl.textContent = info.blurb;
+
+  if (tableBody) {
+    tableBody.innerHTML = SEASON_MEETS.map(m => {
+      const start = new Date(m.start + 'T00:00:00');
+      const end = new Date(m.end + 'T23:59:59');
+      let status, statusColor;
+      if (now > end) { status = 'Completed'; statusColor = 'var(--white4)'; }
+      else if (now >= start && now <= end) { status = 'Happening now'; statusColor = 'var(--green)'; }
+      else {
+        const days = Math.ceil((start - now) / 86400000);
+        status = `In ${days} day${days===1?'':'s'}`;
+        statusColor = days <= 21 ? 'var(--gold)' : 'var(--cyan)';
+      }
+      const dateStr = start.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + '–' + end.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+      return `<tr><td>${m.name}<br><span style="font-size:0.7rem;color:var(--white3)">${m.tag}</span></td><td>${dateStr}</td><td>${m.course}</td><td style="color:${statusColor}">${status}</td></tr>`;
+    }).join('');
+  }
+}
 
 // ─── AI COACH — STREAMING ─────────────────────
 let currentMode='coach';
